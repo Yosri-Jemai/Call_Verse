@@ -1,0 +1,142 @@
+import json
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+from uuid import UUID, uuid4
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.types import Command
+from pydantic import BaseModel, Field, model_validator
+
+from src.agent.graph import create_agent
+from src.config import settings
+
+logger = logging.getLogger("cashy.api")
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+
+class ChatRequest(BaseModel):
+    message: str | None = Field(default=None, min_length=1, max_length=8000)
+    thread_id: UUID | None = None
+    customer_id: int | None = Field(default=None, ge=1)
+    approved: bool | None = None
+
+    @model_validator(mode="after")
+    def require_message_or_approval(self):
+        if self.approved is None and (self.message is None or not self.message.strip()):
+            raise ValueError("Provide a non-empty message or an approval decision.")
+        if self.approved is not None and self.thread_id is None:
+            raise ValueError("A thread_id is required to approve or reject an action.")
+        return self
+
+
+class ChatResponse(BaseModel):
+    thread_id: UUID
+    message: str | None = None
+    pending_approval: bool = False
+    confirmation: dict[str, Any] | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with PostgresSaver.from_conn_string(settings.database_url) as checkpointer:
+        checkpointer.setup()
+        app.state.agent = create_agent(checkpointer=checkpointer)
+        logger.info("Agent ready [mode=%s db=%s]", settings.app_mode, settings.resolved_db_name)
+        yield
+
+
+app = FastAPI(
+    title="Cashy Agent API",
+    description=(
+        "Local development API for the Cashy banking-support agent. "
+        "This prototype has no caller authentication or customer-level authorization."
+    ),
+    lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
+
+
+def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
+    interrupts = result.get("__interrupt__", ())
+    if interrupts:
+        confirmation = interrupts[0].value
+        return ChatResponse(
+            thread_id=thread_id,
+            message=confirmation.get("message", "Please review and confirm this action."),
+            pending_approval=True,
+            confirmation=confirmation,
+        )
+
+    messages = result.get("messages", ())
+    if not messages:
+        raise HTTPException(status_code=500, detail="The agent returned no response.")
+
+    content = messages[-1].content
+    if isinstance(content, str):
+        response_text = content
+    elif isinstance(content, list):
+        text_parts = [
+            block["text"]
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        ]
+        response_text = "\n".join(text_parts) if text_parts else json.dumps(content, default=str)
+    elif isinstance(content, dict) and isinstance(content.get("text"), str):
+        response_text = content["text"]
+    else:
+        response_text = json.dumps(content, default=str)
+    return ChatResponse(thread_id=thread_id, message=response_text)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "mode": settings.app_mode}
+
+
+@app.get("/", include_in_schema=False)
+def chat_ui():
+    return FileResponse(WEB_DIR / "index.html")
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat(payload: ChatRequest, request: Request) -> ChatResponse:
+    agent = request.app.state.agent
+    thread_id = payload.thread_id or uuid4()
+
+    if payload.customer_id is not None:
+        settings.current_customer_id = payload.customer_id
+
+    customer_id = settings.current_customer_id
+    config = {"configurable": {"thread_id": str(thread_id), "customer_id": str(customer_id)}}
+
+    if payload.approved is not None:
+        snapshot = agent.get_state(config)
+        has_pending_interrupt = any(task.interrupts for task in snapshot.tasks)
+        if not has_pending_interrupt:
+            raise HTTPException(
+                status_code=409,
+                detail="This conversation has no pending action to approve or reject.",
+            )
+        result = agent.invoke(Command(resume={"approved": payload.approved}), config)
+    else:
+        if payload.message is None:
+            raise HTTPException(status_code=422, detail="A message is required.")
+        result = agent.invoke(
+            {"messages": [HumanMessage(content=payload.message)]},
+            config,
+        )
+
+    return format_result(thread_id, result)

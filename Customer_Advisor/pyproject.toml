@@ -1,0 +1,46 @@
+[project]
+name = "cashy-agent"
+version = "1.0.0"
+description = "Banking support agent API using LangGraph, LangChain, and PostgreSQL"
+requires-python = ">=3.10"
+dependencies = [
+    # Core agent framework
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-huggingface>=0.1",
+
+    # LLM providers
+    "huggingface-hub>=0.20",
+    "langchain-openai>=0.3",
+    "langchain-anthropic>=0.3",
+    "langchain-google-genai>=2.0",
+
+    # Database (psycopg2 for tools, psycopg v3 for checkpointer)
+    "psycopg2-binary>=2.9",
+    "psycopg[binary]>=3.1",
+    "langgraph-checkpoint-postgres>=2.0",
+
+    # HTTP API + chart tool
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+    "matplotlib>=3.8",
+
+    # Evaluation & tracing
+    "langsmith>=0.1",
+
+    # Config
+    "python-dotenv>=1.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+]
+rag = [
+    "datasets>=2.19",
+]

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f7fb">
+    <title>Cashy Agent</title>
+    <link rel="stylesheet" href="/assets/chat.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Cashy home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span>cashy<span class="brand-period">.</span></span>
+        </a>
+        <div class="connection">
+          <span class="connection-dot" id="health-dot"></span>
+          <span id="health-label">Connecting</span>
+        </div>
+      </header>
+
+      <section class="chat-panel" aria-label="Cashy chat">
+        <div class="chat-heading">
+          <div>
+            <p class="eyebrow">BANKING SUPPORT · DEMO</p>
+            <h1>Your financial<br>sidekick.</h1>
+            <p class="intro">Ask a question about the connected demo accounts and transactions.</p>
+          </div>
+          <button class="new-chat" id="new-chat" type="button" title="Start a new conversation">
+            <span aria-hidden="true">＋</span> New chat
+          </button>
+        </div>
+
+        <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions">
+          <article class="message assistant">
+            <span class="avatar" aria-hidden="true">C</span>
+            <div class="bubble">Hi! I’m Cashy. I can help with demo account balances, transactions, and spending. What would you like to know?</div>
+          </article>
+        </div>
+
+        <div class="composer-wrap">
+          <form class="composer" id="chat-form">
+            <label class="visually-hidden" for="message-input">Your message</label>
+            <textarea id="message-input" rows="1" maxlength="8000" placeholder="Ask Cashy anything…" required></textarea>
+            <button class="send-button" id="send-button" type="submit" aria-label="Send message">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </button>
+          </form>
+          <p class="composer-note">Demo assistant · Please don’t share passwords, PINs, CVVs, or one-time codes.</p>
+          <p class="error-message" id="error-message" role="alert" hidden></p>
+        </div>
+      </section>
+      <footer>Cashy agent prototype <span>·</span> Local testing only</footer>
+    </main>
+    <script src="/assets/chat.js" defer></script>
+  </body>
+</html>

@@ -21,7 +21,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-data/
 
 # Virtual Environments
 venv/
@@ -30,6 +29,7 @@ ENV/
 env.bak/
 venv.bak/
 .venv/
+env/
 
 # PyCharm
 .idea/
@@ -81,8 +81,15 @@ dmypy.json
 *.tmp
 *.temp
 .cache/
-data/
+
+# Keep policy source JSONL files; ignore generated indexes and verification output.
+data/*
+!data/.gitkeep
+!data/bank_policies_*.jsonl
 data/chroma/
+data/support_style.sqlite3
+data/chunks_export.csv
+data/verification_report.csv
 
 # Claude Code project files
 .claude/

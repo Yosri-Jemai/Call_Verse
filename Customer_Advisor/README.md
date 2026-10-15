@@ -4,60 +4,57 @@ Cashy is a Python banking-support agent backend intended to be called by a separ
 
 > **Prototype safety:** The API is for local testing with demo data. It has no caller authentication or customer-level authorization. Do not expose it to the internet or load real customer data until identity verification, authorization, audit logging, and sensitive-data controls are implemented. Never ingest passwords, PINs, CVVs, full card numbers, or one-time codes.
 
-## Run locally on Windows
+## Installation après un clone
 
-Requirements: Python 3.10+ and a running PostgreSQL server. The commands below use
-PowerShell from the `Customer_Advisor` project directory.
-
-### Create a virtual environment and install dependencies
-
-For a fresh checkout without an existing virtual environment:
+Prérequis : Python 3.10+ et un serveur PostgreSQL. Exécute ces commandes dans
+PowerShell depuis le dossier `Customer_Advisor`.
 
 ```powershell
+# 1. Créer l'environnement virtuel
 py -3 -m venv .venv
+
+# 2. Installer toutes les dépendances épinglées (application, RAG et outils dev)
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[rag]"
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# Alternative avec uv
+uv sync --extra rag --extra dev
+
+# 3. Créer la configuration locale
 Copy-Item .env.example .env
 ```
 
-The `rag` extra installs ChromaDB and Sentence Transformers in addition to the
-application dependencies. The configured embedding model is downloaded on the first
-import or policy search and runs locally.
-
-Edit `.env` and provide an LLM key, for example:
-
-```env
-APP_MODE=demo
-LLM_PROVIDER=google
-GOOGLE_API_KEY=your_key_here
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME_DEMO=cashy_banking_demo
-DB_USER=postgres
-DB_PASSWORD=
-```
-
-To use Groq instead, select its provider and configure the key locally in `.env`
-(never commit the key). The default model is `llama-3.3-70b-versatile`; set
-`MODEL_NAME` to another model currently available to your Groq account if needed:
-
-```env
-LLM_PROVIDER=groq
-GROQ_API_KEY=your_rotated_groq_key_here
-```
-
-Create the dedicated demo database in PostgreSQL, then load its schema and sample records:
+Renseigne dans `.env` la clé du fournisseur choisi (`LLM_PROVIDER` et la clé
+correspondante), ainsi que les paramètres PostgreSQL. Ne mets jamais de vraie clé
+dans `.env.example` ni dans Git. Pour Groq, configure `LLM_PROVIDER=groq` et
+`GROQ_API_KEY`; `MODEL_NAME` peut remplacer le modèle Groq par défaut.
 
 ```powershell
+# 4. Créer la base demo et charger le schéma/les données d'exemple
 createdb -U postgres cashy_banking_demo
-psql -U postgres -d cashy_banking_demo -f scripts/seed_demo_db.sql
-```
+psql -U postgres -d cashy_banking_demo -f scripts\seed_demo_db.sql
 
-After completing the database setup above, start the API:
+# 5. Importer les politiques bancaires dans l'index Chroma local
+.\.venv\Scripts\python.exe -m scripts.ingest_bank_policies_chroma data\
 
-```powershell
+# 6. Lancer l'API
 .\.venv\Scripts\python.exe app.py
 ```
+
+Le premier import ou la première recherche télécharge localement le modèle
+`intfloat/multilingual-e5-small` (environ 470 Mo); une connexion Internet est requise
+pour ce téléchargement. Chroma est ensuite persisté sous `data/chroma/`, qui peut
+être reconstruit en réimportant les fichiers JSONL.
+
+`requirements.txt` est la liste épinglée à utiliser après un clone.
+`requirements-venv.txt` est un instantané local ancien et incomplet; il n'est pas
+maintenu. Ne l'utilise pas pour installer l'application.
+
+## Run locally on Windows
+
+Requirements: Python 3.10+ and a running PostgreSQL server. The commands below use
+PowerShell from the `Customer_Advisor` project directory. Follow the clone-installation
+steps above to create the environment and start the API.
 
 This command keeps the server running in the current terminal; press `Ctrl+C` to stop it.
 The service binds to `http://127.0.0.1:8000` by default. Open that address for the
@@ -174,7 +171,7 @@ The browser page is a small client served by FastAPI from the same origin and po
 | `pyproject.toml` | Project metadata, runtime dependencies, and optional `dev` and `rag` dependency groups. |
 | `uv.lock` | Exact dependency resolution used by `uv sync`. |
 | `requirements.txt` | Exported runtime dependency list for pip-compatible environments. `pyproject.toml` and `uv.lock` are the primary `uv` dependency definitions. |
-| `requirements-venv.txt` | Snapshot of packages installed in one local virtual environment; useful for reference, but not the portable project dependency source of truth. |
+| `requirements-venv.txt` | Legacy machine-specific snapshot; incomplete for this project and not the portable dependency source. Use `requirements.txt`. |
 | `.gitignore` | Keeps local secrets, virtual environments, generated data, caches, and other non-source files out of Git. |
 
 ### Agent
@@ -222,7 +219,8 @@ The browser page is a small client served by FastAPI from the same origin and po
 | `tests/test_api.py` | Tests API request validation, agent invocation, structured model output formatting, and write-approval flow. |
 | `tests/test_style_rag.py` | Tests style retrieval and behavior when no local index exists. |
 | `data/support_style.sqlite3` | Generated, Git-ignored search index built from Hugging Face dialogue examples; can be recreated with the ingestion script. |
-| `data/` | Local generated indexes and data files; excluded from Git. |
+| `data/bank_policies_*.jsonl` | Source policy documents; included in Git and imported to rebuild the local Chroma index. |
+| `data/chroma/` and generated CSV exports | Local generated index and verification output; excluded from Git. |
 
 `src/__init__.py`, `src/agent/__init__.py`, `src/db/__init__.py`, `src/tools/__init__.py`, and `tests/__init__.py` mark their folders as Python packages. The package initializers that export tools also define the relevant package-level public interface.
 

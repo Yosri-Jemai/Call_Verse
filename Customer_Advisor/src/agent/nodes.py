@@ -16,6 +16,7 @@ DEFAULT_MODELS = {
     "openai": "gpt-5-mini",
     "anthropic": "claude-sonnet-4-20250514",
     "google": "gemini-3.8-flash",
+    "groq": "llama-3.3-70b-versatile",
     "huggingface": "meta-llama/Llama-3.3-70B-Instruct",
     "free-tier": "Qwen/Qwen2.5-7B-Instruct",
 }
@@ -62,6 +63,17 @@ def create_model():
             model=model_name,
             google_api_key=settings.google_api_key,
             max_output_tokens=settings.model_max_tokens,
+            temperature=settings.model_temperature,
+        )
+
+    elif provider == "groq":
+        from langchain_openai import ChatOpenAI
+
+        chat_model = ChatOpenAI(
+            model=model_name,
+            api_key=settings.groq_api_key,
+            base_url="https://api.groq.com/openai/v1",
+            max_tokens=settings.model_max_tokens,
             temperature=settings.model_temperature,
         )
 

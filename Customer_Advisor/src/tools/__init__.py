@@ -7,6 +7,7 @@ from src.tools.create_transaction import create_transaction
 from src.tools.update_transaction import update_transaction
 from src.tools.delete_transaction import delete_transaction
 from src.tools.generate_chart import generate_chart
+from src.tools.bank_policy_search import search_bank_policies
 
 all_tools = [
     finance_db_query,
@@ -18,4 +19,5 @@ all_tools = [
     update_transaction,
     delete_transaction,
     generate_chart,
+    search_bank_policies,
 ]

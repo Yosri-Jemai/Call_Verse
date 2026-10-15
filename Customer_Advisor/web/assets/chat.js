@@ -48,11 +48,28 @@ async function postChat(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const data = await response.json();
+  const contentType = response.headers.get("Content-Type") || "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+  if (!response.ok && !isJson) {
+    throw new Error("Le service est indisponible, réessayez dans quelques instants.");
+  }
+  if (!isJson) {
+    throw new Error("Le service est indisponible, réessayez dans quelques instants.");
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Le service est indisponible, réessayez dans quelques instants.");
+  }
   if (!response.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : "The agent request failed.";
+    const detail = typeof data.detail === "string"
+      ? data.detail
+      : "Le service est indisponible, réessayez dans quelques instants.";
     throw new Error(detail);
   }
+  if (typeof data.detail === "string") throw new Error(data.detail);
   return data;
 }
 

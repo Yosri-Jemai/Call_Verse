@@ -9,7 +9,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from google.genai.errors import APIError as GoogleAPIError
 from langchain_core.messages import HumanMessage
+from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import Command
 from pydantic import BaseModel, Field, model_validator
@@ -19,6 +21,9 @@ from src.config import settings
 
 logger = logging.getLogger("cashy.api")
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+SERVICE_BUSY_DETAIL = "Le service est temporairement saturé, réessayez plus tard."
+LLM_UNAVAILABLE_DETAIL = "Le service de génération est indisponible."
+INTERNAL_ERROR_DETAIL = "Erreur interne."
 
 
 class ChatRequest(BaseModel):
@@ -82,7 +87,7 @@ def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
 
     messages = result.get("messages", ())
     if not messages:
-        raise HTTPException(status_code=500, detail="The agent returned no response.")
+        raise RuntimeError("The agent returned no response.")
 
     content = messages[-1].content
     if isinstance(content, str):
@@ -106,6 +111,66 @@ def health():
     return {"status": "ok", "mode": settings.app_mode}
 
 
+def _exception_chain(error: Exception):
+    pending = [error]
+    seen = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        yield current
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+
+
+def _is_quota_or_rate_limit_error(error: Exception) -> bool:
+    for current in _exception_chain(error):
+        status_code = getattr(current, "status_code", None)
+        status_code = status_code or getattr(current, "code", None)
+        if status_code == 429:
+            return True
+
+        message = str(current).lower()
+        if any(
+            marker in message
+            for marker in (
+                "resource_exhausted",
+                "rate limit",
+                "rate_limit",
+                "too many requests",
+                "quota",
+            )
+        ):
+            return True
+    return False
+
+
+def _is_llm_error(error: Exception) -> bool:
+    llm_error_types = (ChatGoogleGenerativeAIError, GoogleAPIError)
+    llm_provider_modules = (
+        "openai",
+        "anthropic",
+        "google.genai",
+        "langchain_google_genai",
+        "langchain_openai",
+        "langchain_anthropic",
+        "huggingface_hub",
+        "langchain_huggingface",
+    )
+    return any(
+        isinstance(current, llm_error_types)
+        or type(current).__module__.startswith(llm_provider_modules)
+        or any(
+            marker in type(current).__name__.lower()
+            for marker in ("llm", "generativeai", "ratelimit", "resourceexhausted")
+        )
+        for current in _exception_chain(error)
+    )
+
+
 @app.get("/", include_in_schema=False)
 def chat_ui():
     return FileResponse(WEB_DIR / "index.html")
@@ -113,30 +178,40 @@ def chat_ui():
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, request: Request) -> ChatResponse:
-    agent = request.app.state.agent
-    thread_id = payload.thread_id or uuid4()
+    try:
+        agent = request.app.state.agent
+        thread_id = payload.thread_id or uuid4()
 
-    if payload.customer_id is not None:
-        settings.current_customer_id = payload.customer_id
+        if payload.customer_id is not None:
+            settings.current_customer_id = payload.customer_id
 
-    customer_id = settings.current_customer_id
-    config = {"configurable": {"thread_id": str(thread_id), "customer_id": str(customer_id)}}
+        customer_id = settings.current_customer_id
+        config = {"configurable": {"thread_id": str(thread_id), "customer_id": str(customer_id)}}
 
-    if payload.approved is not None:
-        snapshot = agent.get_state(config)
-        has_pending_interrupt = any(task.interrupts for task in snapshot.tasks)
-        if not has_pending_interrupt:
-            raise HTTPException(
-                status_code=409,
-                detail="This conversation has no pending action to approve or reject.",
+        if payload.approved is not None:
+            snapshot = agent.get_state(config)
+            has_pending_interrupt = any(task.interrupts for task in snapshot.tasks)
+            if not has_pending_interrupt:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This conversation has no pending action to approve or reject.",
+                )
+            result = agent.invoke(Command(resume={"approved": payload.approved}), config)
+        else:
+            if payload.message is None:
+                raise HTTPException(status_code=422, detail="A message is required.")
+            result = agent.invoke(
+                {"messages": [HumanMessage(content=payload.message)]},
+                config,
             )
-        result = agent.invoke(Command(resume={"approved": payload.approved}), config)
-    else:
-        if payload.message is None:
-            raise HTTPException(status_code=422, detail="A message is required.")
-        result = agent.invoke(
-            {"messages": [HumanMessage(content=payload.message)]},
-            config,
-        )
 
-    return format_result(thread_id, result)
+        return format_result(thread_id, result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Chat request failed")
+        if _is_quota_or_rate_limit_error(exc):
+            raise HTTPException(status_code=429, detail=SERVICE_BUSY_DETAIL) from exc
+        if _is_llm_error(exc):
+            raise HTTPException(status_code=502, detail=LLM_UNAVAILABLE_DETAIL) from exc
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc

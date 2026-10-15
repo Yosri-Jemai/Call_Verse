@@ -21,6 +21,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+data/
 
 # Virtual Environments
 venv/
@@ -81,6 +82,7 @@ dmypy.json
 *.temp
 .cache/
 data/
+data/chroma/
 
 # Claude Code project files
 .claude/

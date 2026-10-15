@@ -16,12 +16,13 @@ For a fresh checkout without an existing virtual environment:
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements-venv.txt
+.\.venv\Scripts\python.exe -m pip install -e ".[rag]"
 Copy-Item .env.example .env
 ```
 
-`requirements-venv.txt` is a pinned snapshot of the project's dependencies. Alternatively,
-use `uv sync --extra rag` to install from the project dependency definitions.
+The `rag` extra installs ChromaDB and Sentence Transformers in addition to the
+application dependencies. The configured embedding model is downloaded on the first
+import or policy search and runs locally.
 
 Edit `.env` and provide an LLM key, for example:
 
@@ -34,6 +35,15 @@ DB_PORT=5432
 DB_NAME_DEMO=cashy_banking_demo
 DB_USER=postgres
 DB_PASSWORD=
+```
+
+To use Groq instead, select its provider and configure the key locally in `.env`
+(never commit the key). The default model is `llama-3.3-70b-versatile`; set
+`MODEL_NAME` to another model currently available to your Groq account if needed:
+
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=your_rotated_groq_key_here
 ```
 
 Create the dedicated demo database in PostgreSQL, then load its schema and sample records:
@@ -55,6 +65,52 @@ standalone chat page. If port 8000 is already in use, choose another port for th
 session, for example `$env:API_PORT = "8010"`, before running the command, then open
 `http://127.0.0.1:8010`. PostgreSQL must permit the configured local authentication method;
 set `DB_PASSWORD` if your server requires a password.
+
+## Bank-policy RAG
+
+Bank-policy retrieval uses a persistent local ChromaDB collection named
+`bank_policies` in `data/chroma/` with cosine distance. Sentence Transformers runs the
+multilingual `intfloat/multilingual-e5-small` embedding model locally. Documents use
+the `passage: ` prefix and questions use `query: `. The model loads once per process.
+No policy text is sent to a hosted embedding API.
+
+The importer accepts one or more JSONL files or folders (searched recursively). The
+four existing files in `data/` use UTF-8 JSONL and the schema below:
+
+```json
+{"category":"fees","title":"Official document title","content":"Paste the exact approved policy text here.","source":"Official tariff guide, section 2","source_url":"https://example.invalid/tariffs","valid_from":"2026-01-01","valid_until":null}
+```
+
+Required fields are `category`, `title`, `content`, and `source`; `source_url`,
+`valid_from`, and `valid_until` are optional. Dates must use `YYYY-MM-DD`. Do not
+import invented policy, customer records, passwords, PINs, CVVs, full card numbers,
+or one-time codes. Imported text is untrusted reference data, never agent
+instructions. Invalid JSONL lines and documents that contain credential/card-like
+data are reported and skipped without stopping the other files.
+
+From the project directory, import the four files:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ingest_bank_policies_chroma data\
+```
+
+The importer prints document and chunk counts. Chunk IDs are SHA-256 hashes of
+`source`, `title`, and `chunk_index`; importing again upserts the same records instead
+of adding duplicates. Pass one or more paths to limit the import, and add `--reset`
+to clear the collection before importing:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ingest_bank_policies_chroma data\bank_policies_fees.jsonl data\bank_policies_limits.jsonl --reset
+```
+
+`EMBEDDING_MODEL` selects the Sentence Transformers model. `SIMILARITY_THRESHOLD`
+sets the minimum cosine similarity (default `0.55`, range `0` to `1`); search returns
+up to four passages and reports no relevant document if every score is below the
+threshold. Tune this value against representative questions and unrelated queries.
+The agent must answer policy questions only from returned passages, cite `source`
+for every fee, limit, or procedure, and say when the passages do not support an
+answer. The old PostgreSQL full-text policy table and importer are retained as
+legacy code; they are no longer used for policy retrieval.
 
 ## HTTP endpoints
 

@@ -43,4 +43,6 @@ dev = [
 ]
 rag = [
     "datasets>=2.19",
+    "chromadb>=1.0",
+    "sentence-transformers>=3.4",
 ]

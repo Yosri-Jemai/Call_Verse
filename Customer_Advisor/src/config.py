@@ -1,4 +1,5 @@
 from typing import Literal, Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,18 +28,25 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     # LLM provider — set explicitly or auto-detected from API keys
-    llm_provider: Optional[Literal["openai", "anthropic", "google", "huggingface", "free-tier", ""]] = None
+    llm_provider: Optional[
+        Literal["openai", "anthropic", "google", "groq", "huggingface", "free-tier", ""]
+    ] = None
 
     # Per-provider API keys (only one needed)
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    groq_api_key: str = ""
     hf_token: str = ""
 
     # Model configuration
     model_name: str = ""  # Optional override; defaults per provider
     model_max_tokens: int = 512
     model_temperature: float = 0.1
+
+    # Local multilingual embeddings for policy-document retrieval
+    embedding_model: str = "intfloat/multilingual-e5-small"
+    similarity_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
 
     # HuggingFace-specific
     hf_inference_provider: str = "together"
@@ -91,6 +99,8 @@ class Settings(BaseSettings):
             return "anthropic"
         if self.google_api_key and self.google_api_key != "AI...":
             return "google"
+        if self.groq_api_key and self.groq_api_key != "gsk_...":
+            return "groq"
         if self.hf_token and self.hf_token != "hf_...":
             # In demo mode, default to free-tier (user can switch to huggingface BYOK)
             if self.app_mode == "demo":

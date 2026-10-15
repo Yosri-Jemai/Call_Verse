@@ -3,6 +3,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from google.genai.errors import ClientError
 from pydantic import ValidationError
 from starlette.requests import Request
 
@@ -10,9 +12,10 @@ from src import api
 
 
 class FakeAgent:
-    def __init__(self, result, pending=False):
+    def __init__(self, result=None, pending=False, error=None):
         self.result = result
         self.pending = pending
+        self.error = error
         self.invocations = []
 
     def get_state(self, config):
@@ -21,6 +24,8 @@ class FakeAgent:
 
     def invoke(self, value, config):
         self.invocations.append((value, config))
+        if self.error is not None:
+            raise self.error
         return self.result
 
 
@@ -54,6 +59,26 @@ def test_chat_invokes_agent_with_thread_and_returns_response():
     invocation, config = agent.invocations[0]
     assert invocation["messages"][0].content == "Hello"
     assert config["configurable"]["thread_id"] == str(thread_id)
+
+
+def test_chat_returns_json_429_for_llm_quota_error():
+    quota_error = ClientError(
+        429,
+        {"error": {"status": "RESOURCE_EXHAUSTED", "message": "Quota exceeded"}},
+    )
+    agent = FakeAgent(error=quota_error)
+    make_request(agent)
+
+    response = TestClient(api.app).post(
+        "/api/chat",
+        json={"message": "Hello"},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {
+        "detail": "Le service est temporairement saturé, réessayez plus tard."
+    }
 
 
 def test_chat_returns_confirmation_for_pending_write():

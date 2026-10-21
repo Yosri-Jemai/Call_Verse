@@ -16,7 +16,7 @@ DEFAULT_MODELS = {
     "openai": "gpt-5-mini",
     "anthropic": "claude-sonnet-4-20250514",
     "google": "gemini-3.8-flash",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "huggingface": "meta-llama/Llama-3.3-70B-Instruct",
     "free-tier": "Qwen/Qwen2.5-7B-Instruct",
 }

@@ -1,1 +1,16 @@
 .env*
+# Python local files
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.db
+
+# Environment secrets
+.env*
+env
+
+# Frontend dependencies and generated files
+node_modules/
+.next/
+tsconfig.tsbuildinfo

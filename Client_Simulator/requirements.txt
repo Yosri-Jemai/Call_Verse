@@ -1,0 +1,9 @@
+# core + web API
+simpy
+langgraph
+pytest
+fastapi
+uvicorn
+python-multipart
+psycopg[binary]      # PostgreSQL driver (SQLite needs nothing)
+anthropic         # default LLM backend (or google-genai / ollama, see requirements-optional.txt)

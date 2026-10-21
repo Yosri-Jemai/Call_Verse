@@ -1,0 +1,6 @@
+# pick what you need
+google-genai     # Gemini client replies
+anthropic        # Claude client replies
+# ollama: no pip package needed any more (HTTP API); Groq also needs none
+gTTS             # client voice (needs internet)
+openai-whisper   # advisor voice -> text (needs ffmpeg installed)

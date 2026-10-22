@@ -3,10 +3,10 @@
 -- US Freelancer Persona — English Language
 --
 -- Usage:
---   createdb -U postgres cashy_banking_demo
---   psql -U postgres -d cashy_banking_demo -f scripts/seed_demo_db.sql
+--   createdb -U postgres cashy_banking
+--   psql -U postgres -d cashy_banking -f scripts/seed_demo_db.sql
 --
--- To reset: dropdb -U postgres cashy_banking_demo && createdb -U postgres cashy_banking_demo && psql -U postgres -d cashy_banking_demo -f scripts/seed_demo_db.sql
+-- To reset: dropdb -U postgres cashy_banking && createdb -U postgres cashy_banking && psql -U postgres -d cashy_banking -f scripts/seed_demo_db.sql
 -- =============================================================================
 
 -- =============================================================================

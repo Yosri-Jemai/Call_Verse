@@ -28,6 +28,8 @@ dependencies = [
     "numpy>=2.2,<3",
     "faster-whisper>=1.1",
     "av>=11,<19",
+    "edge-tts>=7.2",
+    "langdetect>=1.0.9",
 
     # Evaluation & tracing
     "langsmith>=0.1",

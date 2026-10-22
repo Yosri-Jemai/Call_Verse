@@ -107,6 +107,59 @@ def test_transcribe_endpoint_rejects_unsupported_audio_type():
     assert response.status_code == 415
 
 
+def test_tts_endpoint_returns_synthesized_audio(monkeypatch):
+    expected = {
+        "audio_b64": "bXAzdGVzdA==",
+        "voice": "fr-FR-DeniseNeural",
+        "lang": "fr",
+        "format": "mp3",
+        "segments": [{"text": "Bonjour.", "lang": "fr"}],
+        "words": ["Bonjour."],
+        "wtimes": [0.0],
+        "wdurations": [450.0],
+    }
+
+    async def fake_synthesize(text, lang="auto"):
+        assert text == "**Bonjour.**"
+        assert lang == "auto"
+        return expected
+
+    monkeypatch.setattr(api, "synthesize_async", fake_synthesize)
+    response = TestClient(api.app).post(
+        "/api/tts",
+        content="**Bonjour.**",
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert response.content == b"mp3test"
+
+
+def test_tts_endpoint_does_not_report_success_without_audio(monkeypatch):
+    async def fake_synthesize(text, lang="auto"):
+        return {
+            "audio_b64": "",
+            "voice": "fr-FR-DeniseNeural",
+            "lang": "fr",
+            "format": "mp3",
+            "segments": [],
+            "words": [],
+            "wtimes": [],
+            "wdurations": [],
+        }
+
+    monkeypatch.setattr(api, "synthesize_async", fake_synthesize)
+    response = TestClient(api.app).post(
+        "/api/tts",
+        content="Bonjour.",
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Text-to-speech returned no audio."}
+
+
 def test_chat_returns_confirmation_for_pending_write():
     confirmation = {"action": "create_transaction", "message": "Confirm this?"}
     result = {"__interrupt__": [SimpleNamespace(value=confirmation)]}
@@ -142,7 +195,9 @@ def test_structured_model_response_returns_text_without_metadata():
 
 def test_approval_resumes_only_a_pending_action():
     thread_id = uuid4()
-    agent = FakeAgent({"messages": [SimpleNamespace(content="Approved.")]}, pending=True)
+    agent = FakeAgent(
+        {"messages": [SimpleNamespace(content="Approved.")]}, pending=True
+    )
 
     response = api.chat(
         api.ChatRequest(thread_id=thread_id, approved=True),

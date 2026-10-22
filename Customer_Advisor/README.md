@@ -70,6 +70,12 @@ on the CPU and sends the transcript to Cashy automatically when you stop recordi
 The browser needs microphone permission; browser media recording works on localhost without
 an HTTPS certificate.
 
+Read-aloud uses Microsoft Edge TTS through the `edge-tts` service. The text of assistant
+responses is sent to that external service to generate audio; leave read-aloud disabled if
+you do not want response text (which may include demo balances or transactions) sent there.
+French, English, and Arabic voices are supported, with word timing metadata returned by the
+TTS API.
+
 ## Bank-policy RAG
 
 Bank-policy retrieval uses a persistent local ChromaDB collection named

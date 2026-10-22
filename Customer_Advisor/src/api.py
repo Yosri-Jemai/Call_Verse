@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -5,8 +6,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from google.genai.errors import APIError as GoogleAPIError
@@ -20,6 +21,7 @@ from src.agent.graph import create_agent
 from src.agent.policy_rag import get_embeddings
 from src.config import settings
 from src.stt.transcriber import transcribe_audio_file
+from src.tss.synthesizer import synthesize_async
 
 logger = logging.getLogger("cashy.api")
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -165,6 +167,33 @@ def transcribe_audio(
     if not result["text"].strip():
         raise HTTPException(status_code=422, detail="No speech was detected in the recording.")
     return TranscriptionResponse(**result)
+
+
+@app.post("/api/tts", response_class=Response)
+async def text_to_speech(
+    text: str = Body(..., min_length=1, max_length=8000, media_type="text/plain"),
+) -> Response:
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="Text to speak cannot be empty.")
+
+    try:
+        result = await synthesize_async(text, lang="auto")
+    except ImportError as exc:
+        logger.exception("Text-to-speech dependency is unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="Text-to-speech is unavailable. Install the project dependencies and restart the app.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Text-to-speech synthesis failed")
+        raise HTTPException(
+            status_code=502, detail="Text-to-speech synthesis failed."
+        ) from exc
+
+    if not result["audio_b64"]:
+        raise HTTPException(status_code=502, detail="Text-to-speech returned no audio.")
+    audio_bytes = base64.b64decode(result["audio_b64"], validate=True)
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 def _exception_chain(error: Exception):

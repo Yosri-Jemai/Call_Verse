@@ -24,6 +24,7 @@ from starlette.background import BackgroundTask
 
 from client_simulator import LANGUAGES, SCENARIOS, ClientSimulatorAgent, ConversationState
 from db import store_or_none
+from profanity import LEVEL_NAME, scan as scan_profanity
 from scorecard import score_call
 
 app = FastAPI(title="Client Simulator API")
@@ -106,6 +107,15 @@ def make_darija_llm(name: Optional[str], model: Optional[str] = None):
     return llm
 
 
+def make_toxicity_model(name: Optional[str]):
+    """The optional ML bad-words model. A model that cannot start is an error, never a silent downgrade."""
+    import toxicity_model
+    try:
+        return toxicity_model.load_toxicity_model(name)
+    except toxicity_model.ToxicityModelError as e:
+        raise HTTPException(400, str(e))
+
+
 def get_call(call_id: str) -> tuple[ClientSimulatorAgent, ConversationState]:
     if call_id not in CALLS:
         raise HTTPException(404, "Call not found (the server may have restarted). Start a new call.")
@@ -131,6 +141,8 @@ def view(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> dict
         "satisfaction": st.satisfaction,
         "history": [{"role": role, "text": text} for role, text in st.history],
         "summary": None,
+        # bad-words detection on the advisor's messages: totals + what the LAST message contained
+        "moderation": moderation_view(st),
         # which engine really wrote the client's lines (no more guessing why it looks rule-based)
         "engine": {**sim.engine_report(st),
                    "warning": _AUTO_REASON.get("client", "") if sim.llm is None else ""},
@@ -140,6 +152,14 @@ def view(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> dict
         out["scorecard"] = score_call(st)
         persist_call(call_id, sim, st)
     return out
+
+
+def moderation_view(st: ConversationState) -> dict:
+    last = st.turn_log[-1]["flags"] if st.turn_log else {}
+    lvl = last.get("grossier_niveau", 0)
+    return {"count": st.profanity_count, "points": st.profanity_points,
+            "last": ({"level": lvl, "level_name": LEVEL_NAME[lvl], "words": last.get("grossier_mots", []),
+                      "categories": last.get("grossier_categories", [])} if lvl else None)}
 
 
 def persist_call(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> None:
@@ -211,6 +231,8 @@ class StartCall(BaseModel):
     darija_model: Optional[str] = None   # optional model name for the Darija model
     language: str = "auto"       # auto | fr | darija | en
     difficulty: float = Field(0, ge=0, le=1)
+    profanity_hangup: bool = True  # the client hangs up after a severe insult / repeated bad language
+    toxicity_model: str = "none"   # ML bad-words model on top of the word list: none | auto | <Hugging Face model name>
 
 
 class Reply(BaseModel):
@@ -230,7 +252,9 @@ def start_call(body: StartCall):
     dar_llm = (make_darija_llm(body.darija_llm, body.darija_model)
                if body.language in ("auto", "darija") and (main_llm is not None or explicit_darija) else None)
     sim = ClientSimulatorAgent(seed=body.seed, llm=main_llm, judge_llm=make_llm(body.judge_llm, "judge"),
-                               difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm)
+                               difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm,
+                               profanity_hangup=body.profanity_hangup,
+                               toxicity_model=make_toxicity_model(body.toxicity_model))
     requests = sim.generate_requests(body.scenario, 10)
     if not requests:
         raise HTTPException(500, "No request generated, try again.")
@@ -270,6 +294,30 @@ def end_call(call_id: str):
     if st.status == "active":
         st.status = "closed"
     return view(call_id, sim, st)
+
+
+# --------------------------------------------------------------------------
+# Bad-words detection (the same detector the judge uses on every advisor message)
+# --------------------------------------------------------------------------
+class ModerationCheck(BaseModel):
+    text: str = Field(max_length=2000)
+    toxicity_model: str = "none"           # none | auto | <Hugging Face model name>
+
+
+@app.post("/api/moderation/check")
+def moderation_check(body: ModerationCheck):
+    """Check a text for bad words (French, English, Darija). Bad words come back masked ("c*****d")."""
+    r = scan_profanity(body.text)
+    out = {"found": r["found"], "level": r["level"], "level_name": LEVEL_NAME[r["level"]],
+           "count": r["count"], "words": r["words"], "categories": r["categories"], "masked": r["masked"]}
+    model = make_toxicity_model(body.toxicity_model)
+    if model is not None:
+        m = model.predict(body.text)
+        out["model"] = m                                   # {"score", "toxic", "model"} or None if it failed
+        if m and m["toxic"] and not out["found"]:
+            out.update(found=True, level=2 if m["score"] >= 0.95 else 1, categories=["model"])
+            out["level_name"] = LEVEL_NAME[out["level"]]
+    return out
 
 
 # --------------------------------------------------------------------------

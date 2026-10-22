@@ -10,7 +10,9 @@ Two implementations with the same output:
 
 Output keys (old ones kept for compatibility):
   resolution, promesse, empathie, identite, identity_fields, identite_generique, demande_sensible,
-  escalade, attente, incertitude, refus, source, tone, contient_chiffre, trop_court, judge
+  escalade, attente, incertitude, refus, source, tone, contient_chiffre, trop_court, judge,
+  grossier (bad words), grossier_niveau (0-3), grossier_nb, grossier_mots (masked), grossier_categories,
+  toxicite_modele (score 0-1 of the optional ML model, absent without a model)
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ import re
 from typing import Callable, Optional
 
 from llm_backends import extract_json
+from profanity import scan as scan_profanity
 
 # --------------------------------------------------------------------------
 # Phrase lists (matched on whole words, accents kept)
@@ -214,6 +217,14 @@ def extra_flags(msg: str) -> dict:
     return f
 
 
+def profanity_flags(msg: str) -> dict:
+    """Bad-words detection (profanity.py). Words are stored masked ("c*****d"): the bad word itself is
+    never copied into the transcript analysis, the scorecard or the UI."""
+    r = scan_profanity(msg)
+    return {"grossier": r["found"], "grossier_niveau": r["level"], "grossier_nb": r["count"],
+            "grossier_mots": r["words"], "grossier_categories": r["categories"]}
+
+
 def rule_analyse(msg: str) -> dict:
     sents = _sentences(msg)
     allsents = [_tokens(msg)]                              # questions kept: "votre date de naissance ?" asks for it
@@ -234,6 +245,9 @@ def rule_analyse(msg: str) -> dict:
     polite, _ = _find(allsents, PHRASES["polite"], check_negation=False)
     f["tone"] = "rude" if rude else "polite" if (polite or f["empathie"]) else "cold" if f["trop_court"] else "neutral"
     f.update(extra_flags(msg))
+    f.update(profanity_flags(msg))
+    if f["grossier"]:
+        f["tone"] = "rude"                                 # swearing is never "polite" or "neutral"
     f["judge"] = "rules"
     return f
 
@@ -269,15 +283,37 @@ Réponds par un seul objet JSON, sans texte autour :
   "tone": "polite" | "neutral" | "cold" | "rude"}}"""
 
 
-class Judge:
-    """Verdict on an advisor message. llm=None -> rules only."""
+def apply_toxicity_model(flags: dict, msg: str, model) -> dict:
+    """Second layer: an ML toxicity model (toxicity_model.py). The word list stays the authority: the model
+    can only ADD a detection. When it is the only one to complain (no listed word) the verdict is gentler:
+    level 1, or level 2 when it is very sure (score >= 0.95)."""
+    r = model.predict(msg)
+    if r is None:                                           # model failed: keep the word-list verdict
+        flags["toxicite_modele"] = None
+        return flags
+    flags["toxicite_modele"] = r["score"]
+    if r["toxic"]:
+        if not flags.get("grossier"):
+            flags["grossier"], flags["grossier_niveau"], flags["grossier_nb"] = True, 2 if r["score"] >= 0.95 else 1, 1
+            flags["grossier_mots"], flags["grossier_categories"] = [], ["model"]
+            flags["tone"] = "rude"
+        elif "model" not in flags["grossier_categories"]:
+            flags["grossier_categories"] = sorted(set(flags["grossier_categories"]) | {"model"})
+    return flags
 
-    def __init__(self, llm: Optional[Callable[[str], str]] = None):
+
+class Judge:
+    """Verdict on an advisor message. llm=None -> rules only. toxicity_model=None -> word list only."""
+
+    def __init__(self, llm: Optional[Callable[[str], str]] = None, toxicity_model=None):
         self.llm = llm
+        self.toxicity_model = toxicity_model
         self.stats = {"llm": 0, "rules": 0, "llm_failed": 0}
 
     def analyse(self, advisor_msg: str, client_msg: str = "") -> dict:
         base = rule_analyse(advisor_msg)
+        if self.toxicity_model is not None:
+            apply_toxicity_model(base, advisor_msg, self.toxicity_model)
         if self.llm is None:
             self.stats["rules"] += 1
             return base
@@ -312,6 +348,8 @@ class Judge:
         out["identite_generique"] = bool(out["identite"]) and not out["identity_fields"]
         if data.get("tone") in VALID_TONES:
             out["tone"] = data["tone"]
+        if out.get("grossier"):                               # the word list is deterministic: the LLM cannot excuse it
+            out["tone"] = "rude"
         if out["resolution"] and out.get("promesse"):         # an action cannot be both done and promised
             out["promesse"] = False
         out["judge"] = "llm"

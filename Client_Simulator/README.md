@@ -20,6 +20,8 @@ KPIs and ground truth for the Quality Analyst and the Workforce Manager.
 | client_simulator.py | The agent: profiles, intents, scenarios, conversation engine, `AdvisorView` |
 | persona.py | Hidden persona: synthetic CRM facts, what the caller really knows, claim checking |
 | judge.py | Reads the advisor's message (LLM judge or negation-safe rules) |
+| profanity.py | Bad-words detection (French, English, Darija arabizi + Arabic script), masked output, extra words file |
+| toxicity_model.py | Optional ML toxicity model (Hugging Face, XLM-R) used on top of the word list |
 | load_model.py | Hourly profile, incidents, difficulty, `Curriculum` |
 | banks.py | Rule-based lines in French and Darija, fraud ladders |
 | advisors.py | Scripted advisors: `baseline_advisor` (verifies identity), `naive_advisor` (never does) |
@@ -30,6 +32,7 @@ KPIs and ground truth for the Quality Analyst and the Workforce Manager.
 | audio.py | Whisper (speech to text) and gTTS (text to speech) |
 | api.py + frontend/ | FastAPI backend and Next.js UI |
 | test_client_simulator.py | Tests (25) |
+| test_profanity.py | Tests of the bad-words detection and its effect on the call and the scorecard |
 
 ## Install and run
     pip install -r requirements.txt        # Whisper also needs ffmpeg
@@ -217,13 +220,42 @@ If the model still repeats a previous line, it gets **one corrective retry** tha
 | Identity verification | 20 | asked, >= 2 specific facts, early, before any action (n/a for low-risk questions) |
 | Empathy | 15 | acknowledges an upset / urgent client early; rudeness is penalised |
 | Accuracy & clarity | 15 | concrete figures, cites a rule, no hesitation, not curt |
-| Compliance | 25 | no secret-code / OTP request, no action before verification, no fraudster served, no guaranteed refund |
+| Compliance | 25 | no secret-code / OTP request, no action before verification, no fraudster served, no guaranteed refund, no bad language |
 | Resolution | 10 | outcome + mandatory steps of the scenario |
 | Closing | 5 | polite closing once resolved |
 
 Plus a per-scenario **checklist**, the **critical failures** (any one caps the total at 40), warnings, and a **turn by turn**
 list of what was good / bad. `sim.summary(st)` now carries `qa_total`, `qa_grade`, `qa_critical` and `repeats` for the KPIs.
 The rules read French and English (and a few Tunisian greetings); the LLM judge keeps judging the conversation flow.
+
+### 2b. Bad-words detection (`profanity.py`)
+Every advisor message is scanned (French, English, Tunisian Darija in Latin or Arabic script). The scan is part of the
+judge (`rule_analyse`), so it works with or without an LLM judge, and an LLM judge cannot excuse it (tone is forced to `rude`).
+
+| Level | Meaning | Examples (masked) | Effect |
+|---|---|---|---|
+| 1 | mild, unprofessional | `st****e`, `da**` | mood -0.10 (plus -0.25 rude); scorecard **warning**, compliance -30 |
+| 2 | vulgar / insulting | `c*****d`, `m***e`, `sh*t` | mood -0.20 (plus -0.25 rude); scorecard **critical failure** (total capped at 40) |
+| 3 | severe: sexual / family insults, threats | `f**k`, `p**e`, `je vais vous tuer` | mood -0.30 (plus -0.25 rude); critical failure; **the client hangs up** |
+
+* The client reacts in character (rule bank `banks.OFFENDED`, or an extra line in the LLM prompt) and hangs up after a level 3 message
+  or once the bad-language points reach `PROFANITY_HANGUP_POINTS` (5). Pass `ClientSimulatorAgent(profanity_hangup=False)` (API:
+  `profanity_hangup: false` in `POST /api/calls`) to only detect and score, without ending the call.
+* Whole-word matching (no "Scunthorpe problem"), robust to accents, upper case, leet speak (`c0nnard`), stretched letters
+  (`fuuuck`), masked letters (`f*ck`) and spaced letters (`f u c k`). The bad words are always stored and shown **masked**.
+* Only the advisor is checked: the simulated client may be angry or rude by design.
+* Add your own words in `profanity_extra.txt` (`word` or `word,level`) or point `PROFANITY_EXTRA_FILE` to another file.
+* API: every call response has a `moderation` block (`count`, `points`, `last`); `POST /api/moderation/check {"text": "..."}`
+  scans any text. The UI shows a warning under the transcript, and the scorecard lists the offending turn.
+* **Optional ML model** (`toxicity_model.py`): `pip install transformers torch`, then `"toxicity_model": "auto"` in `POST /api/calls`
+  (or `ClientSimulatorAgent(toxicity_model=load_toxicity_model("auto"))`). Default model:
+  `textdetox/twitter-xlmr-toxicity-classifier` (XLM-R large, ~2 GB download on first use; change it with `TOXICITY_MODEL`,
+  threshold with `TOXICITY_THRESHOLD`, default 0.7). The word list stays the authority: the model only **adds** detections,
+  and one made by the model alone counts as level 1 (level 2 above 0.95). If the model fails, the word list still works.
+  Published scores are good on French and English (F1 ~0.91) but weak on Arabic (~0.62), and Tunisian arabizi is not
+  covered, so keep the word list for Darija. Check any model on your own examples before trusting it.
+* The word list alone cannot understand context or sarcasm and will miss words that are not on the list: extend it
+  with the extra file as you meet new cases.
 
 ### 3. Compliance-trap scenarios (pick them in the Scenario menu)
 | Scenario | The caller | The advisor must |

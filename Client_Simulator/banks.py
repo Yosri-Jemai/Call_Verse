@@ -178,6 +178,13 @@ ANGRY = {"fr": ["Ça fait trop longtemps, je veux une solution maintenant !",
          "en": ["This is taking way too long, I want a solution now!",
                 "This is unacceptable, can't you even answer?"],
          "da": ["Barcha wa9t, n7eb 7all tawa !", "Hedha mch ma9boul, ma ta3rfouch tjawbou ?"]}
+# ---- the advisor swore / insulted the client ------------------------------------------------
+OFFENDED = {"fr": ["Pardon ? On ne me parle pas comme ça. Je veux un conseiller poli, sinon je demande un responsable.",
+                   "Vous venez de m'insulter ! Surveillez votre langage, ou je raccroche et je dépose une réclamation."],
+            "en": ["Excuse me? You can't talk to me like that. I want a polite advisor, or I'll ask for a manager.",
+                   "Did you just insult me?! Watch your language, or I'm hanging up and filing a complaint."],
+            "da": ["Chnouwa ? Ma tkalemnich hakka. N7eb conseiller mou2adab, wala nodlob responsable.",
+                   "Inti tawa se3bitni ! Raddi belek 3la kalmetek, wala nsakker w na3mel réclamation."]}
 UNSURE = {"fr": "Vous n'êtes pas sûr ? J'ai besoin d'une information fiable.",
           "en": "You're not sure? I need reliable information.",
           "da": "Mch mt2aked ? N7eb ma3louma s7iha."}

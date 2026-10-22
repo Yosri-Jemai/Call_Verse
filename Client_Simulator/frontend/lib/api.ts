@@ -24,7 +24,13 @@ export type Scorecard = {
   critical_failures: string[];
   warnings: string[];
   checklist: { step: string; done: boolean }[];
-  per_turn: { turn: number; advisor: string; good: string[]; bad: string[]; client: string }[];
+  per_turn: { turn: number; advisor: string; good: string[]; bad: string[]; bad_words?: string[]; client: string }[];
+};
+
+export type Moderation = {
+  count: number; // advisor messages with bad words so far
+  points: number; // sum of their levels (1 mild, 2 vulgar, 3 severe)
+  last: { level: number; level_name: string; words: string[]; categories: string[] } | null; // last message only
 };
 
 export type CallState = {
@@ -49,6 +55,7 @@ export type CallState = {
   history: Turn[];
   summary: CallSummary | null;
   scorecard?: Scorecard | null;
+  moderation?: Moderation;
   engine?: {
     mode: "rules" | "llm" | "mixed" | "llm_failed";
     backend: string;

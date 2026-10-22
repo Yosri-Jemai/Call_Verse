@@ -787,6 +787,15 @@ export default function CallPanel() {
               {pending && <div className="typing">{call.client.name} is answering…</div>}
             </div>
 
+            {call.moderation?.last && (
+              <div className={`mod-warn lvl-${call.moderation.last.level}`} role="alert">
+                ⚠ Offensive language detected ({call.moderation.last.level_name}
+                {call.moderation.last.words.length ? `: ${call.moderation.last.words.join(", ")}` : ""}). Stay
+                professional: this is recorded in your QA score
+                {call.status === "active" && call.moderation.points >= 3 ? " and the client may hang up" : ""}.
+              </div>
+            )}
+
             {active ? (
               <div className="composer">
                 <textarea

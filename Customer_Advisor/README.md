@@ -75,7 +75,8 @@ an HTTPS certificate.
 Bank-policy retrieval uses a persistent local ChromaDB collection named
 `bank_policies` in `data/chroma/` with cosine distance. Sentence Transformers runs the
 multilingual `intfloat/multilingual-e5-small` embedding model locally. Documents use
-the `passage: ` prefix and questions use `query: `. The model loads once per process.
+the `passage: ` prefix and questions use `query: `. The model is preloaded during API
+startup and remains cached once per process.
 No policy text is sent to a hosted embedding API.
 
 The importer accepts one or more JSONL files or folders (searched recursively). The

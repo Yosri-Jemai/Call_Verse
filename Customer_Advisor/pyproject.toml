@@ -9,19 +9,16 @@ dependencies = [
     "langchain>=0.3",
     "langchain-core>=0.3",
     "langchain-huggingface>=0.1",
-
     # LLM providers
     "huggingface-hub>=0.20",
     "langchain-openai>=0.3",
     "langchain-anthropic>=0.3",
     "langchain-google-genai>=2.0",
     "google-genai>=1.63,<2",
-
     # Database (psycopg2 for tools, psycopg v3 for checkpointer)
     "psycopg2-binary>=2.9",
     "psycopg[binary]>=3.1",
     "langgraph-checkpoint-postgres>=2.0",
-
     # HTTP API + chart tool
     "fastapi>=0.100",
     "python-multipart>=0.0.20",
@@ -34,11 +31,11 @@ dependencies = [
 
     # Evaluation & tracing
     "langsmith>=0.1",
-
     # Config
     "python-dotenv>=1.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
+    "langchain-groq>=1.1.2",
 ]
 
 [project.optional-dependencies]

@@ -65,6 +65,7 @@ Thumbs.db
 htmlcov/
 .tox/
 .nox/
+test_latency/
 
 # Jupyter Notebook
 .ipynb_checkpoints

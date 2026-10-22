@@ -17,6 +17,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field, model_validator
 
 from src.agent.graph import create_agent
+from src.agent.policy_rag import get_embeddings
 from src.config import settings
 from src.stt.transcriber import transcribe_audio_file
 
@@ -70,6 +71,7 @@ SUPPORTED_AUDIO_TYPES = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    get_embeddings()
     with PostgresSaver.from_conn_string(settings.database_url) as checkpointer:
         checkpointer.setup()
         app.state.agent = create_agent(checkpointer=checkpointer)

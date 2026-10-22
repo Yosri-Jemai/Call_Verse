@@ -10,15 +10,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # App mode — use seeded demo data by default; personal mode expects an existing database.
+    # App mode controls assistant behavior, not database selection.
     app_mode: Literal["demo", "personal"] = "demo"
 
-    # Database — auto-reads DB_HOST, DB_PORT, etc. from .env
+    # Database — database name is fixed; connection details come from .env.
     db_host: str = "localhost"
     db_port: int = 5432
-    db_name: str = "cashy_banking"  # fallback; overridden by resolved_db_name
-    db_name_demo: str = "cashy_banking_demo"
-    db_name_personal: str = "cashy_banking"
     db_user: str = "postgres"
     db_password: str = ""
     db_sslmode: str = ""  # "require" for Neon; empty for local
@@ -65,10 +62,8 @@ class Settings(BaseSettings):
 
     @property
     def resolved_db_name(self) -> str:
-        """Return the database name based on app_mode."""
-        if self.app_mode == "demo":
-            return self.db_name_demo
-        return self.db_name_personal
+        """Return the single database used by the application."""
+        return "cashy_banking"
 
     @property
     def database_url(self) -> str:

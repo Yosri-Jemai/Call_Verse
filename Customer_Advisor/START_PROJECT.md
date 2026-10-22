@@ -20,9 +20,9 @@ Create `.env` from the example if you do not already have one:
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Edit `.env` and set `APP_MODE=demo`, your LLM provider and its API key, and the
-PostgreSQL connection settings (`DB_HOST`, `DB_PORT`, `DB_NAME_DEMO`, `DB_USER`,
-and `DB_PASSWORD`). Keep `.env` private; do not commit it.
+Edit `.env` and set your LLM provider and its API key, and the PostgreSQL connection
+settings (`DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_PASSWORD`). The application always
+uses the `cashy_banking` database, regardless of `APP_MODE`. Keep `.env` private; do not commit it.
 
 ## 3. Set up the demo database
 
@@ -30,8 +30,8 @@ Make sure PostgreSQL is installed and its server is running. In a PostgreSQL-ena
 PowerShell terminal, create and seed the demo database:
 
 ```powershell
-createdb -U postgres cashy_banking_demo
-psql -U postgres -d cashy_banking_demo -f scripts/seed_demo_db.sql
+createdb -U postgres cashy_banking
+psql -U postgres -d cashy_banking -f scripts/seed_demo_db.sql
 ```
 
 If your PostgreSQL user or password is different, use the matching values in these

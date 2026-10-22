@@ -25,14 +25,15 @@ Copy-Item .env.example .env
 ```
 
 Renseigne dans `.env` la clé du fournisseur choisi (`LLM_PROVIDER` et la clé
-correspondante), ainsi que les paramètres PostgreSQL. Ne mets jamais de vraie clé
+correspondante), ainsi que les paramètres de connexion PostgreSQL. L'application
+utilise toujours la base `cashy_banking`, quel que soit le mode. Ne mets jamais de vraie clé
 dans `.env.example` ni dans Git. Pour Groq, configure `LLM_PROVIDER=groq` et
 `GROQ_API_KEY`; `MODEL_NAME` peut remplacer le modèle Groq par défaut.
 
 ```powershell
 # 4. Créer la base demo et charger le schéma/les données d'exemple
-createdb -U postgres cashy_banking_demo
-psql -U postgres -d cashy_banking_demo -f scripts\seed_demo_db.sql
+createdb -U postgres cashy_banking
+psql -U postgres -d cashy_banking -f scripts\seed_demo_db.sql
 
 # 5. Importer les politiques bancaires dans l'index Chroma local
 .\.venv\Scripts\python.exe -m scripts.ingest_bank_policies_chroma data\
@@ -62,6 +63,12 @@ standalone chat page. If port 8000 is already in use, choose another port for th
 session, for example `$env:API_PORT = "8010"`, before running the command, then open
 `http://127.0.0.1:8010`. PostgreSQL must permit the configured local authentication method;
 set `DB_PASSWORD` if your server requires a password.
+
+The chat page also supports local speech-to-text through the microphone button. On the
+first recording, faster-whisper downloads the `small` model (about 500 MB); inference runs
+on the CPU and sends the transcript to Cashy automatically when you stop recording.
+The browser needs microphone permission; browser media recording works on localhost without
+an HTTPS certificate.
 
 ## Bank-policy RAG
 

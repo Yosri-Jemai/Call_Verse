@@ -81,6 +81,32 @@ def test_chat_returns_json_429_for_llm_quota_error():
     }
 
 
+def test_transcribe_endpoint_returns_local_transcription(monkeypatch):
+    expected = {
+        "text": "Bonjour Cashy.",
+        "language": "fr",
+        "segments": [{"start": 0.0, "end": 1.5, "text": "Bonjour Cashy."}],
+    }
+    monkeypatch.setattr(api, "transcribe_audio_file", lambda audio_bytes, language=None: expected)
+
+    response = TestClient(api.app).post(
+        "/api/transcribe",
+        files={"audio": ("recording.webm", b"audio-data", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_transcribe_endpoint_rejects_unsupported_audio_type():
+    response = TestClient(api.app).post(
+        "/api/transcribe",
+        files={"audio": ("recording.txt", b"not audio", "text/plain")},
+    )
+
+    assert response.status_code == 415
+
+
 def test_chat_returns_confirmation_for_pending_write():
     confirmation = {"action": "create_transaction", "message": "Confirm this?"}
     result = {"__interrupt__": [SimpleNamespace(value=confirmation)]}

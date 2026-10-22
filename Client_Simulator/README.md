@@ -144,3 +144,93 @@ The UI itself has not been updated yet (no language / difficulty selector).
   stand-in), LangGraph (`graph.py`), FastAPI / pydantic (endpoint functions ran against stubs), `psycopg`,
   Whisper, gTTS, the LLM backends and the Next.js frontend. Run `pytest`, `python sim_env.py` and
   `python db.py init` once on your machine.
+
+## Darija (Tunisian Arabizi) model
+
+Small models (llama 3B, mistral) answer in French or Modern Standard Arabic instead of Tunisian. A **second,
+dedicated LLM now writes only the Darija lines**; French and English keep using the main client model.
+
+* `llm_backends.darija_llm()` picks it: `DARIJA_LLM` / `DARIJA_MODEL` in `.env`, else ESPRIT-Derja if `DERJA_BASE_URL`
+  is set, else the first configured of gemini (2.5-pro) > claude (sonnet) > groq > ollama.
+* `ClientSimulatorAgent(darija_llm=...)` routes by `req.language == "darija"`.
+* The prompt has a Tunisian lexicon + 8 example sentences and bans Moroccan / Algerian / Egyptian / MSA words.
+* `darija_issues()` checks every Darija line (Arabic script, other dialects, plain French). On a problem the model gets
+  one corrective retry; if it still fails, the hand-written rule bank in `banks.py` is used instead.
+* API: `POST /api/calls` accepts `darija_llm` (`auto | same | gemini | claude | groq | ollama`) and `darija_model`.
+  The UI has a "Darija model" selector and shows which model spoke.
+
+### ESPRIT-Derja-Qwen3-8B-v2 (Tunisian-specific model)
+
+[ESPRIT-Group/ESPRIT-Derja-Qwen3-8B-v2](https://huggingface.co/ESPRIT-Group/ESPRIT-Derja-Qwen3-8B-v2) is a Qwen3-8B
+fine-tuned on Tunisian Derja (Arabic script + Arabizi). Its model card warns about occasional Algerian / Moroccan words
+and invented words, which is why every line still goes through `darija_issues()` + one retry + the rule-bank fallback.
+
+It is a chat model, not a JSON instruction follower, so for it the simulator uses a short Tunisian-style prompt and a
+plain-text answer (`prompt_style = "derja"`). Mood changes then come from the judge / rules instead of the model, and
+when the advisor asks for the birth date / card digits the line must contain the exact values (else retry).
+
+**Option A: server (recommended).** Linux / WSL2 / Docker, GPU with ~16 GB:
+```bash
+pip install vllm
+VLLM_USE_V1=0 vllm serve ESPRIT-Group/ESPRIT-Derja-Qwen3-8B-v2 \
+  --gpu-memory-utilization 0.40 --max-model-len 8192 --port 8009 \
+  --served-model-name ESPRIT-Derja-Qwen3-8B-v2 --trust-remote-code
+```
+then in `.env`: `DERJA_BASE_URL=http://localhost:8009/v1` and `DARIJA_LLM=derja`.
+No GPU? Run the same command in Google Colab / Kaggle, expose port 8009 (ngrok / cloudflared) and put that URL in
+`DERJA_BASE_URL`. An ESPRIT AI Forge endpoint works too (`DERJA_BASE_URL` + `DERJA_API_KEY`).
+
+**Option B: local in the same process.** `pip install transformers torch accelerate`, then `DARIJA_LLM=derja_hf`
+(first call downloads ~16 GB; add `bitsandbytes` and `DERJA_4BIT=1` for a smaller GPU).
+
+Check: `python llm_backends.py check` lists `derja: ready (...)` when the server answers. In the UI choose
+"Darija model: ESPRIT-Derja-Qwen3-8B".
+
+## Voice (rewritten)
+- **You -> client:** one microphone stream (echo cancellation + noise suppression) -> `frontend/lib/vad.ts` detects when you
+  stop talking -> `/api/audio/stt` -> **Groq Whisper large-v3** (if `GROQ_API_KEY`) with a banking vocabulary prompt, else local
+  Whisper. Silence / Whisper hallucinations ("Sous-titres...") are dropped.
+- **Client -> you:** `/api/audio/tts` uses **edge-tts** neural voices (male / female guessed from the client name, `ar-TN` for
+  Darija, speed and pitch from the client's sentiment), gTTS as fallback, browser voice as last resort. The answer is cut into
+  sentences and requested in parallel, so the voice starts after the first sentence.
+- **Barge-in:** tick "I wear headphones" and talk over the client: it stops and your microphone takes over.
+- `GET /api/audio/status` shows which engines are active (displayed in the UI).
+- `test_llm_audio.py` tests a different audio API (`provider=`, `client_name=`, `emotion=`, `_stt_groq`...) than the one in this
+  archive: those audio tests were already out of sync and need updating.
+
+
+## Client memory, QA scorecard and compliance-trap scenarios
+
+### 1. Memory and anti-repetition (`memory.py`)
+The client now remembers the call. Every LLM prompt gets a "MÉMOIRE DE L'APPEL" section with its last 3 lines
+("do not repeat them"), the expressions it already overused (word pairs such as "ya khouya"), the figures the advisor
+gave, and any **contradiction** between them ("100 dinars" then "1000000 dinars": the client points it out once).
+If the model still repeats a previous line, it gets **one corrective retry** that shows it the repeated line
+(`sim.stats["repeat_retry"]`, `st.repeats`). The rule-based client never says the same line twice in a row either.
+
+### 2. QA scorecard (`scorecard.py`)
+`score_call(st)` (also `GET /api/calls/{id}/scorecard`, and automatically in the response when a call ends) returns:
+
+| Criterion | Weight | What is measured |
+|---|---|---|
+| Greeting | 10 | greeting + offer to help + tone |
+| Identity verification | 20 | asked, >= 2 specific facts, early, before any action (n/a for low-risk questions) |
+| Empathy | 15 | acknowledges an upset / urgent client early; rudeness is penalised |
+| Accuracy & clarity | 15 | concrete figures, cites a rule, no hesitation, not curt |
+| Compliance | 25 | no secret-code / OTP request, no action before verification, no fraudster served, no guaranteed refund |
+| Resolution | 10 | outcome + mandatory steps of the scenario |
+| Closing | 5 | polite closing once resolved |
+
+Plus a per-scenario **checklist**, the **critical failures** (any one caps the total at 40), warnings, and a **turn by turn**
+list of what was good / bad. `sim.summary(st)` now carries `qa_total`, `qa_grade`, `qa_critical` and `repeats` for the KPIs.
+The rules read French and English (and a few Tunisian greetings); the LLM judge keeps judging the conversation flow.
+
+### 3. Compliance-trap scenarios (pick them in the Scenario menu)
+| Scenario | The caller | The advisor must |
+|---|---|---|
+| `contestation_carte` | disputes a card payment, demands a guaranteed refund | verify, block the card, register the dispute with a reference, give a timeline, **not** promise a guaranteed refund |
+| `vishing_otp` | gave an SMS code to a fake bank agent, panics, would read any code again | verify, block, open a fraud file, warn never to share codes, **never ask for an SMS code** |
+| `virement_sans_verification` | genuine but pushy, refuses identity checks before a transfer to a new beneficiary | hold firm, explain the security reason, **not execute before verification** |
+
+Each call in these scenarios has the same intent (`LoadScenario.intent_only`), in French, English and Darija.
+Tests: `pytest -q test_qa_memory.py` (15 tests).

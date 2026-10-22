@@ -45,6 +45,9 @@ INTENT_GOALS = {
     "changement_coordonnees": "faire changer le numéro de téléphone du compte sans passer par la vérification complète",
     "virement_urgent": "obtenir un virement immédiat sans la vérification complète",
     "hausse_plafond": "faire augmenter le plafond de retrait sans la vérification complète",
+    "contestation_carte": "faire bloquer ma carte, enregistrer la contestation d'un paiement que je n'ai pas fait et être remboursé",
+    "vishing_otp": "arrêter la fraude, récupérer mon argent et comprendre ce qui s'est passé après avoir donné un code SMS à un faux conseiller",
+    "virement_sans_verification": "faire exécuter un virement vers un nouveau bénéficiaire immédiatement, en évitant la vérification d'identité",
 }
 
 

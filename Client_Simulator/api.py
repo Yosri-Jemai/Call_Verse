@@ -24,6 +24,7 @@ from starlette.background import BackgroundTask
 
 from client_simulator import LANGUAGES, SCENARIOS, ClientSimulatorAgent, ConversationState
 from db import store_or_none
+from scorecard import score_call
 
 app = FastAPI(title="Client Simulator API")
 
@@ -74,6 +75,37 @@ def make_llm(name: Optional[str], role: str = "client", model: Optional[str] = N
 _AUTO_REASON: dict[str, str] = {}
 
 
+def make_darija_llm(name: Optional[str], model: Optional[str] = None):
+    """The dedicated Darija model. name: none | same | auto | derja | derja_hf | claude | gemini | groq | ollama.
+    derja = ESPRIT-Derja-Qwen3-8B-v2 behind an OpenAI-compatible server; derja_hf = same model loaded locally.
+    none / same = the main client LLM also writes the Darija lines. auto = DARIJA_LLM from .env,
+    else the best configured backend (gemini > claude > groq > ollama); no key at all = main LLM."""
+    import llm_backends
+    if not name or name in ("none", "same"):
+        return None
+    key = ("darija", name, model)
+    if key in _LLM_CACHE:
+        return _LLM_CACHE[key]
+    try:
+        llm = llm_backends.darija_llm(None if name == "auto" else name, model)
+    except Exception as e:
+        if name in ("derja", "derja_hf", "auto"):
+            # The ESPRIT-Derja server is not running (or no key): do not block the call, use the next
+            # configured backend (groq > gemini > claude > ollama) and say why.
+            for n in llm_backends.DARIJA_PREFERENCE:
+                try:
+                    fb = llm_backends.make_backend(n, "darija", None)
+                except Exception:
+                    continue
+                _AUTO_REASON["darija"] = f"{name} unavailable ({e}); using {n} for Darija instead."
+                return fb                       # not cached: the next call tries the preferred one again
+            _AUTO_REASON["darija"] = str(e)
+            return None                         # last resort: the main client LLM writes the Darija
+        raise HTTPException(400, f"Cannot start the Darija '{name}' backend: {type(e).__name__}: {e}")
+    _LLM_CACHE[key] = llm
+    return llm
+
+
 def get_call(call_id: str) -> tuple[ClientSimulatorAgent, ConversationState]:
     if call_id not in CALLS:
         raise HTTPException(404, "Call not found (the server may have restarted). Start a new call.")
@@ -105,6 +137,7 @@ def view(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> dict
     }
     if st.status != "active":
         out["summary"] = sim.summary(st)
+        out["scorecard"] = score_call(st)
         persist_call(call_id, sim, st)
     return out
 
@@ -160,7 +193,8 @@ def llm_models(backend: str):
 
 @app.get("/api/scenarios")
 def scenarios():
-    return [{"name": n, "calls_per_min": sc.calls_per_min} for n, sc in SCENARIOS.items()]
+    return [{"name": n, "calls_per_min": sc.calls_per_min, "description": sc.description}
+            for n, sc in SCENARIOS.items()]
 
 
 # --------------------------------------------------------------------------
@@ -173,6 +207,8 @@ class StartCall(BaseModel):
     llm: str = "auto"            # auto | none | claude | gemini | groq | ollama
     model: Optional[str] = None  # optional model name (see GET /api/llm/models)
     judge_llm: str = "none"      # LLM that judges the advisor's messages (none = keyword rules)
+    darija_llm: str = "auto"     # model that writes the Darija lines: auto | same | derja | derja_hf | claude | gemini | groq | ollama
+    darija_model: Optional[str] = None   # optional model name for the Darija model
     language: str = "auto"       # auto | fr | darija | en
     difficulty: float = Field(0, ge=0, le=1)
 
@@ -188,8 +224,13 @@ def start_call(body: StartCall):
     if body.language != "auto" and body.language not in LANGUAGES:
         raise HTTPException(400, f"Unknown language '{body.language}'")
     weights = None if body.language == "auto" else {body.language: 1.0}
-    sim = ClientSimulatorAgent(seed=body.seed, llm=make_llm(body.llm, "client", body.model), judge_llm=make_llm(body.judge_llm, "judge"),
-                               difficulty=body.difficulty, language_weights=weights)
+    main_llm = make_llm(body.llm, "client", body.model)
+    # dedicated Darija model, only worth loading when a LLM plays the client and Darija can occur
+    explicit_darija = body.darija_llm not in ("auto", "same", "none", "")
+    dar_llm = (make_darija_llm(body.darija_llm, body.darija_model)
+               if body.language in ("auto", "darija") and (main_llm is not None or explicit_darija) else None)
+    sim = ClientSimulatorAgent(seed=body.seed, llm=main_llm, judge_llm=make_llm(body.judge_llm, "judge"),
+                               difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm)
     requests = sim.generate_requests(body.scenario, 10)
     if not requests:
         raise HTTPException(500, "No request generated, try again.")
@@ -205,6 +246,13 @@ def start_call(body: StartCall):
 def read_call(call_id: str):
     sim, st = get_call(call_id)
     return view(call_id, sim, st)
+
+
+@app.get("/api/calls/{call_id}/scorecard")
+def call_scorecard(call_id: str):
+    """QA scorecard of a call (works while it is running too: criteria that do not apply yet are `na`)."""
+    _, st = get_call(call_id)
+    return score_call(st)
 
 
 @app.post("/api/calls/{call_id}/reply")
@@ -304,7 +352,11 @@ def crm_client(client_id: str):
 class Speak(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     lang: str = "fr"
-    slow: bool = False           # gTTS has no rate: this is the only prosody knob on the server voice
+    slow: bool = False           # gTTS fallback has no rate: this is its only prosody knob
+    name: str = ""               # client name: picks a male / female voice
+    gender: str = ""             # "f" | "m" (overrides the guess from the name)
+    rate: float = Field(default=1.0, ge=0.6, le=1.6)
+    pitch: float = Field(default=1.0, ge=0.8, le=1.25)
 
 
 def _remove(path: str):
@@ -314,12 +366,19 @@ def _remove(path: str):
         pass
 
 
+@app.get("/api/audio/status")
+def audio_status():
+    """Which voice engines are active (shown in the UI)."""
+    from audio import stt_backend, tts_backend
+    return {"stt": stt_backend(), "tts": tts_backend()}
+
+
 @app.post("/api/audio/stt")
 def speech_to_text_endpoint(file: UploadFile = File(...), language: str = "auto", model_size: str = "base"):
     try:
         from audio import speech_to_text
     except ImportError:
-        raise HTTPException(501, "Audio support missing. Run: pip install openai-whisper")
+        raise HTTPException(501, "Audio support missing. Set GROQ_API_KEY or run: pip install openai-whisper")
     suffix = os.path.splitext(file.filename or "")[1] or ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(file.file.read())
@@ -330,7 +389,9 @@ def speech_to_text_endpoint(file: UploadFile = File(...), language: str = "auto"
     except FileNotFoundError:
         raise HTTPException(500, "ffmpeg was not found. Install ffmpeg and restart the terminal.")
     except Exception as e:
-        raise HTTPException(500, f"Transcription failed: {e}")
+        import traceback
+        traceback.print_exc()                      # full error in the backend terminal
+        raise HTTPException(500, f"Transcription failed: {type(e).__name__}: {e}")
     finally:
         _remove(tmp.name)
 
@@ -343,7 +404,9 @@ def text_to_speech_endpoint(body: Speak):
         raise HTTPException(501, "Audio support missing. Run: pip install gTTS")
     out = os.path.join(tempfile.gettempdir(), f"client_{uuid.uuid4().hex}.mp3")
     try:
-        text_to_speech(body.text, out, body.lang, slow=body.slow)
+        from audio import guess_gender
+        gender = body.gender if body.gender in ("f", "m") else guess_gender(body.name)
+        text_to_speech(body.text, out, body.lang, slow=body.slow, gender=gender, rate=body.rate, pitch=body.pitch)
     except ImportError:
         raise HTTPException(501, "gTTS is not installed. Run: pip install gTTS")
     except Exception as e:

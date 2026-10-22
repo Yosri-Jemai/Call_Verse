@@ -16,6 +16,17 @@ export type CallSummary = {
   abandoned: boolean;
 };
 
+export type ScoreCriterion = { label: string; weight: number; na: boolean; score: number | null; evidence: string[] };
+export type Scorecard = {
+  total: number | null;
+  grade: string;
+  criteria: Record<string, ScoreCriterion>;
+  critical_failures: string[];
+  warnings: string[];
+  checklist: { step: string; done: boolean }[];
+  per_turn: { turn: number; advisor: string; good: string[]; bad: string[]; client: string }[];
+};
+
 export type CallState = {
   call_id: string;
   client: {
@@ -37,10 +48,14 @@ export type CallState = {
   satisfaction: number;
   history: Turn[];
   summary: CallSummary | null;
+  scorecard?: Scorecard | null;
   engine?: {
     mode: "rules" | "llm" | "mixed" | "llm_failed";
     backend: string;
     model: string;
+    darija_backend?: string;
+    darija_model?: string;
+    darija_retries?: number;
     llm_turns: number;
     rule_turns: number;
     last_error: string;
@@ -68,7 +83,7 @@ export type SimResult = {
   results: { fifo: PolicyResult; priority: PolicyResult };
 };
 
-export type Scenario = { name: string; calls_per_min: number };
+export type Scenario = { name: string; calls_per_min: number; description?: string };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -102,6 +117,8 @@ export const startCall = (body: {
   wait_seconds: number;
   llm: string;
   model?: string | null;
+  darija_llm?: string;
+  darija_model?: string | null;
   language?: string;
   difficulty?: number;
 }) => request<CallState>("/api/calls", json(body));
@@ -128,13 +145,12 @@ export async function speechToText(blob: Blob, language?: string): Promise<strin
   return r.text;
 }
 
-export async function textToSpeech(text: string, lang?: string, slow?: boolean): Promise<Blob> {
+export type TtsOptions = { lang?: string; slow?: boolean; name?: string; gender?: "f" | "m"; rate?: number; pitch?: number };
+
+export async function textToSpeech(text: string, o: TtsOptions = {}): Promise<Blob> {
   let res: Response;
-  const body: { text: string; lang?: string; slow?: boolean } = { text };
-  if (lang) body.lang = lang;
-  if (slow) body.slow = true;
   try {
-    res = await fetch(API + "/api/audio/tts", json(body));
+    res = await fetch(API + "/api/audio/tts", json({ text, ...o }));
   } catch {
     throw new Error(`Cannot reach the backend at ${API}.`);
   }
@@ -147,6 +163,8 @@ export async function textToSpeech(text: string, lang?: string, slow?: boolean):
   }
   return res.blob();
 }
+
+export const getAudioStatus = () => request<{ stt: string; tts: string }>("/api/audio/status");
 
 export const getLlmModels = (backend: string) =>
   request<{ backend: string; models: string[]; error?: string }>(`/api/llm/models?backend=${encodeURIComponent(backend)}`);

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 from src.agent.graph import create_agent
 from src.agent.policy_rag import get_embeddings
 from src.config import settings
+from src.stt.transcriber import transcribe_audio_file
 
 logger = logging.getLogger("cashy.api")
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -47,6 +48,25 @@ class ChatResponse(BaseModel):
     message: str | None = None
     pending_approval: bool = False
     confirmation: dict[str, Any] | None = None
+
+
+class TranscriptionResponse(BaseModel):
+    text: str
+    language: str
+    segments: list[dict[str, Any]]
+
+
+MAX_AUDIO_SIZE = 25 * 1024 * 1024
+SUPPORTED_AUDIO_TYPES = {
+    "audio/flac",
+    "audio/mp3",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/wav",
+    "audio/webm",
+    "audio/x-wav",
+}
 
 
 @asynccontextmanager
@@ -111,6 +131,40 @@ def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
 @app.get("/health")
 def health():
     return {"status": "ok", "mode": settings.app_mode}
+
+
+@app.post("/api/transcribe", response_model=TranscriptionResponse)
+def transcribe_audio(
+    audio: UploadFile = File(...),
+    language: str | None = Form(default=None),
+) -> TranscriptionResponse:
+    content_type = (audio.content_type or "").split(";", maxsplit=1)[0].strip().lower()
+    if content_type not in SUPPORTED_AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail="Unsupported audio format.")
+
+    audio_bytes = audio.file.read(MAX_AUDIO_SIZE + 1)
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="The audio recording is empty.")
+    if len(audio_bytes) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=413, detail="Audio must be 25 MB or smaller.")
+
+    try:
+        result = transcribe_audio_file(audio_bytes, language=language)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ImportError as exc:
+        logger.exception("Speech-to-text dependency is unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="Speech recognition is unavailable. Install the project dependencies and restart the app.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Audio transcription failed")
+        raise HTTPException(status_code=500, detail="Audio transcription failed.") from exc
+
+    if not result["text"].strip():
+        raise HTTPException(status_code=422, detail="No speech was detected in the recording.")
+    return TranscriptionResponse(**result)
 
 
 def _exception_chain(error: Exception):

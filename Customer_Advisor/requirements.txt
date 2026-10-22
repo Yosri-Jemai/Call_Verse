@@ -31,6 +31,14 @@ attrs==26.1.0
     #   aiohttp
     #   jsonschema
     #   referencing
+av==17.1.0 ; python_full_version < '3.11'
+    # via
+    #   cashy-agent
+    #   faster-whisper
+av==18.1.0 ; python_full_version >= '3.11'
+    # via
+    #   cashy-agent
+    #   faster-whisper
 bcrypt==5.0.0
     # via chromadb
 build==1.6.1
@@ -69,6 +77,8 @@ coverage==7.13.4
     # via pytest-cov
 cryptography==46.0.5
     # via google-auth
+ctranslate2==4.8.3
+    # via faster-whisper
 cuda-bindings==13.4.4 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via torch
 cuda-pathfinder==1.8.3 ; python_full_version < '3.15' and sys_platform == 'linux'
@@ -97,6 +107,8 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11'
     #   anyio
     #   pytest
 fastapi==0.128.6
+    # via cashy-agent
+faster-whisper==1.2.1
     # via cashy-agent
 filelock==3.20.3
     # via
@@ -154,6 +166,7 @@ huggingface-hub==0.36.2
     # via
     #   cashy-agent
     #   datasets
+    #   faster-whisper
     #   langchain-huggingface
     #   sentence-transformers
     #   tokenizers
@@ -263,6 +276,7 @@ numpy==2.2.6 ; python_full_version < '3.11'
     #   cashy-agent
     #   chromadb
     #   contourpy
+    #   ctranslate2
     #   datasets
     #   matplotlib
     #   onnxruntime
@@ -276,6 +290,7 @@ numpy==2.4.2 ; python_full_version >= '3.11'
     #   cashy-agent
     #   chromadb
     #   contourpy
+    #   ctranslate2
     #   datasets
     #   matplotlib
     #   onnxruntime
@@ -328,9 +343,13 @@ nvidia-nvtx==13.0.85 ; (platform_machine == 'aarch64' and sys_platform == 'linux
 oauthlib==4.0.0
     # via requests-oauthlib
 onnxruntime==1.23.2 ; python_full_version < '3.11'
-    # via chromadb
+    # via
+    #   chromadb
+    #   faster-whisper
 onnxruntime==1.31.0 ; python_full_version >= '3.11'
-    # via chromadb
+    # via
+    #   chromadb
+    #   faster-whisper
 openai==2.21.0
     # via langchain-openai
 opentelemetry-api==1.45.1
@@ -467,11 +486,14 @@ python-dotenv==1.2.1
     #   cashy-agent
     #   pydantic-settings
     #   uvicorn
+python-multipart==0.0.32
+    # via cashy-agent
 pytz==2025.2
     # via pandas
 pyyaml==6.0.3
     # via
     #   chromadb
+    #   ctranslate2
     #   datasets
     #   huggingface-hub
     #   kubernetes
@@ -571,6 +593,7 @@ tiktoken==0.12.0
 tokenizers==0.22.2
     # via
     #   chromadb
+    #   faster-whisper
     #   langchain-huggingface
     #   sentence-transformers
     #   transformers
@@ -585,6 +608,7 @@ tqdm==4.67.3
     # via
     #   chromadb
     #   datasets
+    #   faster-whisper
     #   huggingface-hub
     #   openai
     #   sentence-transformers

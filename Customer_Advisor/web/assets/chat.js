@@ -2,8 +2,10 @@ const form = document.querySelector("#chat-form");
 const input = document.querySelector("#message-input");
 const messages = document.querySelector("#messages");
 const sendButton = document.querySelector("#send-button");
+const recordButton = document.querySelector("#record-button");
 const newChatButton = document.querySelector("#new-chat");
 const errorMessage = document.querySelector("#error-message");
+const recordingStatus = document.querySelector("#recording-status");
 const healthDot = document.querySelector("#health-dot");
 const healthLabel = document.querySelector("#health-label");
 const speechControls = document.querySelector("#speech-controls");
@@ -173,6 +175,13 @@ if ("speechSynthesis" in window) {
   });
   speechStop.addEventListener("click", cancelSpeech);
 }
+let recorder = null;
+let recordingStream = null;
+let audioChunks = [];
+let recordingTimeout = null;
+let transcribing = false;
+let requestingMicrophone = false;
+const maxRecordingMs = 60_000;
 
 function addMessage(role, text) {
   const row = document.createElement("article");
@@ -213,9 +222,15 @@ function addMessage(role, text) {
 
 function setBusy(value) {
   busy = value;
-  sendButton.disabled = value || awaitingApproval;
-  newChatButton.disabled = value;
-  input.disabled = value || awaitingApproval;
+  updateControls();
+}
+
+function updateControls() {
+  const locked = busy || transcribing || requestingMicrophone || recorder?.state === "recording";
+  sendButton.disabled = locked || awaitingApproval;
+  recordButton.disabled = busy || transcribing || requestingMicrophone || awaitingApproval;
+  newChatButton.disabled = locked;
+  input.disabled = locked || awaitingApproval;
 }
 
 function showError(message) {
@@ -252,6 +267,109 @@ async function postChat(payload) {
   }
   if (typeof data.detail === "string") throw new Error(data.detail);
   return data;
+}
+
+async function transcribeRecording(blob) {
+  const body = new FormData();
+  const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+  body.append("audio", blob, `recording.${extension}`);
+
+  const response = await fetch("/api/transcribe", { method: "POST", body });
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("The speech recognition service returned an invalid response.");
+  }
+  if (!response.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "Audio transcription failed.");
+  }
+  if (typeof data.text !== "string" || !data.text.trim()) {
+    throw new Error("No speech was detected in the recording.");
+  }
+  return data.text.trim();
+}
+
+function stopRecording() {
+  if (recorder?.state === "recording") recorder.stop();
+}
+
+async function startRecording() {
+  errorMessage.hidden = true;
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    showError("This browser does not support microphone recording.");
+    return;
+  }
+
+  requestingMicrophone = true;
+  updateControls();
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    requestingMicrophone = false;
+    const preferredType = ["audio/webm;codecs=opus", "audio/mp4"]
+      .find((type) => MediaRecorder.isTypeSupported(type));
+    recorder = preferredType
+      ? new MediaRecorder(recordingStream, { mimeType: preferredType })
+      : new MediaRecorder(recordingStream);
+    audioChunks = [];
+
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size) audioChunks.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      clearTimeout(recordingTimeout);
+      recordingStream?.getTracks().forEach((track) => track.stop());
+      recordingStream = null;
+      recordButton.classList.remove("recording");
+      recordButton.setAttribute("aria-pressed", "false");
+      recordButton.title = "Record a voice message";
+      recordButton.setAttribute("aria-label", "Record a voice message");
+      recordingStatus.hidden = true;
+      updateControls();
+
+      const blob = new Blob(audioChunks, { type: recorder.mimeType || "audio/webm" });
+      audioChunks = [];
+      if (!blob.size) {
+        showError("No audio was captured. Please try again.");
+        return;
+      }
+
+      transcribing = true;
+      recordingStatus.textContent = "Transcribing audio locally…";
+      recordingStatus.hidden = false;
+      updateControls();
+      try {
+        const transcript = await transcribeRecording(blob);
+        recordingStatus.textContent = "Sending your voice message to Cashy…";
+        await sendMessage(transcript);
+        recordingStatus.hidden = true;
+      } catch (error) {
+        showError(error.message || "Audio transcription failed.");
+        recordingStatus.hidden = true;
+      } finally {
+        transcribing = false;
+        updateControls();
+      }
+    }, { once: true });
+
+    recorder.start();
+    recordButton.classList.add("recording");
+    recordButton.setAttribute("aria-pressed", "true");
+    recordButton.title = "Stop recording";
+    recordButton.setAttribute("aria-label", "Stop recording");
+    recordingStatus.textContent = "Recording… Select the microphone again to stop (60-second limit).";
+    recordingStatus.hidden = false;
+    updateControls();
+    recordingTimeout = setTimeout(stopRecording, maxRecordingMs);
+  } catch (error) {
+    requestingMicrophone = false;
+    recordingStream?.getTracks().forEach((track) => track.stop());
+    recordingStream = null;
+    showError(error.name === "NotAllowedError"
+      ? "Microphone access was denied. Allow microphone access and try again."
+      : "Unable to start microphone recording.");
+    updateControls();
+  }
 }
 
 function addApproval(response) {
@@ -341,11 +459,18 @@ async function respondToApproval(approved, actions) {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const message = input.value.trim();
-  if (!message || busy || awaitingApproval) return;
-  cancelSpeech();
+  if (!message || busy || transcribing || recorder?.state === "recording" || awaitingApproval) return;
   input.value = "";
   input.style.height = "auto";
   void sendMessage(message);
+});
+
+recordButton.addEventListener("click", () => {
+  if (recorder?.state === "recording") {
+    stopRecording();
+  } else {
+    void startRecording();
+  }
 });
 
 input.addEventListener("input", () => {
@@ -361,8 +486,7 @@ input.addEventListener("keydown", (event) => {
 });
 
 newChatButton.addEventListener("click", () => {
-  if (busy) return;
-  cancelSpeech();
+  if (busy || transcribing || recorder?.state === "recording") return;
   threadId = null;
   awaitingApproval = false;
   messages.replaceChildren();

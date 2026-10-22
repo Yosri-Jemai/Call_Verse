@@ -1,0 +1,48 @@
+# ============================================================================
+# LLM Provider Configuration
+# ============================================================================
+# Choose your provider: openai, anthropic, google, huggingface, 
+LLM_PROVIDER=groq
+
+# Set the API key for your chosen provider (only one needed)
+GROQ_API_KEY=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
+
+# Optional: override the default model for your provider
+# MODEL_NAME=gpt-4o
+# MODEL_MAX_TOKENS=512
+
+# HuggingFace-specific: inference provider (together, sambanova, etc.)
+# HF_INFERENCE_PROVIDER=together
+
+
+# ============================================================================
+# Database Configuration (PostgreSQL)
+# ============================================================================
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME_DEMO=cashy_banking_demo
+DB_NAME_PERSONAL=cashy_banking
+DB_USER=postgres
+DB_PASSWORD=admin
+
+
+# ============================================================================
+# LangSmith Configuration (optional — for tracing and evaluation)
+# ============================================================================
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=cashy-financial-advisor
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+
+
+# ============================================================================
+# Application Settings
+# ============================================================================
+# App mode: "demo" (seeded showcase data) or "personal" (your real financial data)
+APP_MODE=personal
+
+# Database names can be overridden above if desired.
+
+ENVIRONMENT=development
+DEBUG=true
+CURRENT_CUSTOMER_ID=2

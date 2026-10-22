@@ -7,3 +7,7 @@ uvicorn
 python-multipart
 psycopg[binary]      # PostgreSQL driver (SQLite needs nothing)
 anthropic         # default LLM backend (or google-genai / ollama, see requirements-optional.txt)
+
+edge-tts           # neural voices (Tunisian Arabic, French, English), free, no key
+gTTS               # fallback voice
+python-dotenv

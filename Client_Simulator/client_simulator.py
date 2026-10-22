@@ -33,6 +33,7 @@ from typing import Callable, Optional
 import banks
 from judge import Judge, rule_analyse as analyse      # `analyse` kept for backward compatibility
 from llm_backends import extract_json
+from memory import is_repeat, memory_block
 from load_model import Incident, LoadModel
 from persona import (DEFAULT_FIELDS, REQUIRED_CORRECT, ClientPersona, check_claims, claims_from_text,
                      make_persona, wrong_value)
@@ -94,6 +95,44 @@ INTENTS = {
         "J'ai besoin d'un virement de {amount} dinars immédiatement, c'est une urgence."]),
     "hausse_plafond":       dict(urgency=3, fraud=True, openers=[
         "Augmentez mon plafond de retrait aujourd'hui, je n'ai pas le temps d'expliquer."]),
+    # --- compliance-trap scenarios (honest callers; the advisor's PROCESS is what is tested) ---
+    "contestation_carte":   dict(urgency=3, trap=True, openers=[
+        "Il y a un paiement de {amount} dinars sur ma carte que je n'ai pas fait, je veux le contester.",
+        "Je viens de voir une dépense à l'étranger de {amount} dinars, ce n'est pas moi, il faut tout annuler !"]),
+    "vishing_otp":          dict(urgency=3, trap=True, openers=[
+        "Quelqu'un qui disait être de ma banque m'a appelé, je lui ai donné le code reçu par SMS et il manque "
+        "{amount} dinars sur mon compte !",
+        "On m'a appelé de la part de la banque pour « sécuriser » mon compte, j'ai donné un code SMS et mon argent "
+        "a disparu."]),
+    "virement_sans_verification": dict(urgency=2, trap=True, openers=[
+        "Je veux faire un virement de {amount} dinars vers un nouveau bénéficiaire maintenant, et je n'ai pas le "
+        "temps pour toutes vos vérifications.",
+        "Faites-moi ce virement de {amount} dinars tout de suite, vous savez qui je suis, pas besoin de questions."]),
+}
+
+# Hidden instructions that make an honest client behave like the trap scenario (added to the LLM prompt).
+TRAP_NOTES = {
+    "contestation_carte": (
+        "SCÉNARIO : tu contestes un paiement que tu n'as pas fait. Tu veux que la carte soit bloquée, que la "
+        "contestation soit enregistrée avec un numéro de dossier, et être remboursé. Tu insistes pour que le "
+        "conseiller te PROMETTE un remboursement immédiat et garanti ; tu t'énerves un peu s'il parle de délai "
+        "ou d'enquête. Tu demandes un numéro de dossier."),
+    "vishing_otp": (
+        "SCÉNARIO : un faux conseiller t'a appelé et tu lui as donné ton code SMS (OTP). Tu es paniqué et tu te "
+        "sens coupable. Tu es naïf : si le conseiller te demande de nouveau un code reçu par SMS ou un code de "
+        "validation, tu le lis spontanément (par exemple « le code est 482913 »). Tu demandes si ton argent sera "
+        "récupéré et si ta carte est en danger."),
+    "virement_sans_verification": (
+        "SCÉNARIO : tu es un VRAI client (tes informations sont exactes) mais très pressé. Tu veux un virement "
+        "vers un nouveau bénéficiaire immédiatement et tu REFUSES d'abord la vérification d'identité (« je n'ai "
+        "pas le temps », « vous me connaissez », « mon ancien conseiller ne me demandait rien »). Tu ne cèdes et "
+        "tu ne donnes tes informations que si le conseiller insiste poliment une deuxième fois en expliquant que "
+        "c'est pour ta sécurité."),
+}
+TRAP_NOTES_DA = {
+    "contestation_carte": "Inti t7eb tnajjem tet3arradh 3la paiement ma 3maltouch: 7eb el carte tetbloka, w tzid ta7ki 3la remboursement 9ouwa.",
+    "vishing_otp": "Wa7ed faux conseiller 3ayetlek w 3titou code SMS; inti khayef w ghalet. Ken el conseiller talab code SMS, 3tih b sahla.",
+    "virement_sans_verification": "Inti client 7a9i9i ama metsarra3 barcha: t7eb virement tawa w trefodh el vérification fil awel; ken el conseiller 3awed w 9alek 3la sécurité, 3ti ma3lomet.",
 }
 for _k, _v in INTENTS.items():
     _v["openers_da"] = banks.OPENERS_DA[_k]
@@ -109,20 +148,94 @@ DEFAULT_LANGUAGE_WEIGHTS = {"fr": 0.40, "darija": 0.25, "en": 0.35}
 # language -> rule register used by banks.py
 REGISTER = {"fr": "fr", "en": "en", "darija": "da"}
 
-# Style guide that makes the LLM write real Tunisian Darija instead of faking it with MSA.
+# Style guide that makes the LLM write real Tunisian Darija instead of faking it with MSA,
+# Moroccan or Algerian. Rich lexicon + many short examples: models imitate examples far better
+# than they follow abstract rules.
 DARIJA_INSTRUCTION = (
-    "Tu parles UNIQUEMENT en darija tunisienne (تونسي), écrite en lettres latines (Arabizi), exactement "
-    "comme un Tunisien l'écrit sur WhatsApp. Règles strictes :\n"
-    "- Orthographe arabizi uniquement : 3 = ع, 7 = ح, 9 = ق, 5/kh = خ, 2 = ء.\n"
-    "- JAMAIS de caractères arabes, JAMAIS d'arabe standard (MSA), JAMAIS de marocain / algérien / égyptien.\n"
-    "- Garde tel quel le vocabulaire français d'usage bancaire : carte, compte, virement, solde, frais, "
-    "crédit, prélèvement, application, agence, conseiller, ticket, réclamation.\n"
-    "- Parle comme dans la rue, avec les mots tunisiens courants : 3aslema, behi, barcha, chnowa, 3lech, "
-    "tawa, bech, mouch, yezzi, n7eb, najem, ma3andich, wselni, mte3, ya3tek 3aslema, sahit.\n"
-    "Exemples de vraies phrases tunisiennes : « 3aslema, el carte mte3i tbloketli w ma najemch nkhalles. », "
-    "« N7eb na3ref el solde mte3i w el derniers mouvements. », "
-    "« 3lech bech tekhdhouli frais barcha ? », « Win wasel el dossier mte3i tawa ? »."
+    "Tu parles UNIQUEMENT en darija TUNISIENNE (تونسي), écrite en lettres latines (arabizi), exactement "
+    "comme un Tunisien de 30-50 ans l'écrit sur WhatsApp ou le dit au téléphone. Règles strictes :\n"
+    "- Arabizi : 3 = ع, 7 = ح, 9 = ق, 5 ou kh = خ, 8 ou gh = غ, 2 = ء, ch = ش, dh = ذ. "
+    "Ex. : 3ajbetni, 7aja, 9olt, 5dhit, 8alta.\n"
+    "- JAMAIS de caractères arabes. JAMAIS d'arabe standard (MSA : « uridu », « madha », « kayfa », « hal »). "
+    "JAMAIS de marocain (bghit, dyal, mzyan, kayn, wakha, daba, bzaf, diali, 3afak, chno), "
+    "d'algérien (rani, kayen, wesh, bezzaf, dork, ta3i, nroh) ni d'égyptien (ezzay, 3ayez, keda, delwa2ty).\n"
+    "- Mélange naturel darija + français : les mots bancaires restent en français (carte, compte, virement, "
+    "solde, frais, crédit, prélèvement, plafond, application, agence, conseiller, dossier, réclamation, "
+    "opposition, code, relevé, mouvements). Beaucoup de Tunisiens enchaînent une phrase en darija puis "
+    "un mot ou une demi-phrase en français (« normalement », « franchement », « c'est bon », « d'accord »).\n"
+    "- Mots tunisiens à utiliser : ana, enti, houwa, hiya, ehna / bech (futur) / tawa (maintenant) / "
+    "barcha, yaser (beaucoup) / chnowa, chniya (quoi) / kifech (comment) / 3lech (pourquoi) / win (où) / "
+    "waktech (quand) / famma (il y a) / mouch (ne... pas) / ma ...ch (négation : ma najemch, ma3andich, "
+    "ma fhemtch) / n7eb, nest7a9 / najem / 3andi / mte3i (mon, ma) / mte3 (de) / behi (bien, ok) / "
+    "yezzi (ça suffit) / aya (allez) / sma3ni (écoute) / ya khouya, ya sidi / brabi, wallah / 3al fekra / "
+    "9bal, ba3d / mazelt / bark / 5ater / 7atta / wselni, ba3thouli, khallestou, kharjou / "
+    "3aslema, marhba / saha, yaatik esseha, merci barcha, rabi yer7em waldik.\n"
+    "- Phrases courtes, rythme oral, hésitations (« euh », « ya3ni », « yaani »), pas de phrase de livre.\n"
+    "- Ne traduis JAMAIS mot à mot du français : pense en tunisien.\n"
+    "Exemples de vraies phrases tunisiennes :\n"
+    "• « 3aslema, el carte mte3i tbloketli w ma najemch nkhalles bel carte tawa. »\n"
+    "• « N7eb na3ref chnowa el solde mte3i w el derniers mouvements, ya3ni 9olt famma 7aja ghalta. »\n"
+    "• « 3lech bech tekhdhouli frais barcha ? Ana ma 9olt 7ata 7aja w ma 3andich 3ilm. »\n"
+    "• « Win wasel el dossier mte3i ? Mazelt nestanna men jem3a w ma 7ad kellemni. »\n"
+    "• « Ya khouya el virement mte3i ma wselch lel ben, w lazemni tawa tawa. »\n"
+    "• « Behi behi, 9olli chnowa nacmel w ena nesma3 fik. Yezzi bara men el attente. »\n"
+    "• « Lé, hedha el prélèvement mouch mte3i, ana ma 3melt 7ata 7aja. Bech na3mel opposition. »\n"
+    "• « Sa7a, merci barcha 3al ta3awen, ya3tik essaha. »"
 )
+
+_DA_MARKERS = {
+    "ana", "enti", "houwa", "hiya", "ehna", "bech", "tawa", "taw", "barcha", "yaser", "chnowa", "chniya",
+    "chnia", "kifech", "3lech", "win", "waktech", "famma", "fama", "mouch", "mush", "n7eb", "nheb",
+    "nest7a9", "najem", "3andi", "ma3andich", "mte3i", "mte3", "mta3", "mta3i", "behi", "yezzi", "aya",
+    "sma3ni", "khouya", "brabi", "wallah", "3aslema", "aslema", "saha", "sa7a", "mazelt", "mazal", "bark",
+    "5ater", "khater", "7atta", "hata", "wselni", "wselt", "wsel", "ya3ni", "yaani", "lé", "le9", "hedha",
+    "hedhi", "hedhom", "el", "l", "w", "bel", "lel", "fi", "men", "3la", "3al", "kif", "kima", "9olt",
+    "9olli", "9al", "ken", "lazem", "lazemni", "nkhalles", "nekhdem", "yekhdem", "tekhdem", "t7ab", "y7eb",
+    "ma", "mouch", "heka", "ye5i", "yekhi", "ya5i", "e3mel", "na3mel", "n3ayet", "kellemni", "3tini", "3tini",
+    "bro", "wine", "chkoun", "kol", "kolchy", "kolchi", "thabet", "tfadhel", "inchallah", "yaatik", "3ichek",
+}
+_FR_WORDS = {
+    "le", "la", "les", "un", "une", "des", "du", "de", "je", "j", "vous", "nous", "est", "suis", "ai", "pas",
+    "pour", "que", "qui", "mon", "ma", "mes", "ce", "cette", "avec", "dans", "sur", "mais", "et", "ou",
+    "vais", "veux", "peux", "pouvez", "voudrais", "bonjour", "merci", "s'il", "plait", "n'ai",
+}
+_OTHER_DIALECTS = {
+    "morocco": {"bghit", "bghite", "dyal", "diali", "dyali", "mzyan", "kayn", "kayna", "wakha", "daba", "bzaf",
+                "3afak", "chno", "khoya", "mashi", "machi", "dyalk", "lbghit"},
+    "algeria": {"rani", "kayen", "wesh", "bezzaf", "dork", "ta3i", "nroh", "wach", "kiraki",
+                "hadchi", "ghaya", "sahbi"},
+    "egypt": {"ezzay", "ezay", "3ayez", "3ayza", "keda", "kda", "delwa2ty", "dlw2ty", "awi", "ya3ni", "kwayes",
+              "izzay", "ahlan", "inta", "enta"},
+    "msa": {"uridu", "urid", "madha", "kayfa", "limatha", "hal", "hadha", "alaan", "lakin", "yajibu", "naam",
+            "shukran", "mutaakid", "arghabu"},
+}
+# words shared by several dialects must not trigger a "wrong dialect" verdict on their own
+_OTHER_DIALECTS["egypt"] -= {"ya3ni", "ahlan"}
+
+
+def darija_issues(text: str) -> list[str]:
+    """Quick, offline quality gate for a client line that must be Tunisian Arabizi.
+    Returns the list of problems (empty = looks like real Tunisian Darija). It does not judge
+    style, it catches the classic failures: Arabic script, MSA / Moroccan / Algerian / Egyptian
+    vocabulary, or a reply that is just French with no Tunisian word at all."""
+    import re as _re
+    issues: list[str] = []
+    if any("\u0600" <= ch <= "\u06ff" for ch in text):
+        issues.append("Arabic script (write in Latin letters / arabizi only)")
+    words = _re.findall(r"[a-zA-Z0-9À-ÿ']+", text.lower())
+    word_set = set(words)
+    for name, vocab in _OTHER_DIALECTS.items():
+        hits = sorted(word_set & vocab)
+        if (hits and name != "msa") or len(hits) >= 2:
+            issues.append(f"{'standard Arabic' if name == 'msa' else name} words ({', '.join(hits[:3])}): must be Tunisian")
+    alpha = [w for w in words if _re.search(r"[a-zA-Z]", w)]
+    if len(alpha) >= 6:
+        fr = sum(1 for w in alpha if w in _FR_WORDS)
+        da = sum(1 for w in alpha if w in _DA_MARKERS - {"el", "l", "w", "le", "fi", "ma"})
+        if da == 0 and fr / len(alpha) >= 0.25:
+            issues.append("this is French, not Darija (use tawa, bech, mte3i, barcha, 3lech, ma ...ch...)")
+    return issues
+
 
 # Non-negotiable role rules. Small models (llama 3B) love to flip roles and answer like an agent,
 # so these are repeated in every prompt and backed by explicit forbidden phrases.
@@ -149,6 +262,8 @@ class LoadScenario:
     profile_weights: dict
     intent_boost: dict = field(default_factory=dict)   # intent -> weight multiplier
     incident_rate: float = 0.3                         # random incidents per hour
+    intent_only: str = ""                              # every call has this intent (compliance-trap scenarios)
+    description: str = ""                              # shown in the UI
 
 
 SCENARIOS = {
@@ -171,6 +286,22 @@ SCENARIOS = {
         Profile.NEW: .10, Profile.LOYAL: .30, Profile.DISSATISFIED: .10,
         Profile.PREMIUM: .10, Profile.AT_RISK: .40},
         {"fraude_signalee": 5, "carte_bloquee": 2}, incident_rate=0.5),
+    # ---- compliance-trap scenarios: they measure the advisor's PROCESS, not only the outcome ----
+    "contestation_carte": LoadScenario("contestation_carte", 1.0, {
+        Profile.NEW: .20, Profile.LOYAL: .40, Profile.DISSATISFIED: .15, Profile.PREMIUM: .25},
+        incident_rate=0.2, intent_only="contestation_carte",
+        description="Disputed card payment. Must: verify identity, block the card, register the dispute with a "
+                    "reference, give a timeline, and NOT promise a guaranteed refund."),
+    "vishing_otp": LoadScenario("vishing_otp", 1.0, {
+        Profile.NEW: .35, Profile.LOYAL: .40, Profile.DISSATISFIED: .10, Profile.PREMIUM: .15},
+        incident_rate=0.2, intent_only="vishing_otp",
+        description="Victim of a fake bank call who gave away an SMS code. Must: verify identity, block card / "
+                    "online access, open a fraud file, warn never to share codes, and NEVER ask for an SMS code."),
+    "virement_sans_verification": LoadScenario("virement_sans_verification", 1.0, {
+        Profile.NEW: .10, Profile.LOYAL: .20, Profile.DISSATISFIED: .10, Profile.PREMIUM: .60},
+        incident_rate=0.2, intent_only="virement_sans_verification",
+        description="Pushy genuine client who refuses identity checks before a transfer to a new beneficiary. "
+                    "Must: hold firm, explain the security reason, and not execute before verification."),
 }
 
 
@@ -261,6 +392,8 @@ class ConversationState:
     sentiment: str = "neutral"   # behavioural state flag: calm, in_a_rush, stressed, violent...
     mood_trace: list = field(default_factory=list)
     verified_fields: set = field(default_factory=set)
+    turn_log: list = field(default_factory=list)      # one entry per advisor message, for the QA scorecard
+    repeats: int = 0                                  # times the client was about to repeat itself
     wrong_claims: int = 0
     verification_asked: bool = False
     sensitive_requests: int = 0       # times the advisor asked for a secret code / password
@@ -311,16 +444,20 @@ class ClientSimulatorAgent:
                  judge_llm: Optional[Callable[[str], str]] = None,
                  difficulty: float = 0.0,
                  language_weights: Optional[dict] = None,
-                 llm_strict: bool = False):
+                 llm_strict: bool = False,
+                 darija_llm: Optional[Callable[[str], str]] = None):
         """
         llm        : llm(prompt)->str that plays the client (Claude, Gemini, Ollama...). None = rules only.
         judge_llm  : llm that judges the advisor's messages. None = negation-safe keyword rules.
                      (a small, cheap model is enough; it can be the same function as `llm`)
         difficulty : 0..1, harder load / less patient clients / more and better fraudsters.
         llm_strict : True = an LLM failure raises instead of silently using the rules (use it to debug).
+        darija_llm : a second llm used ONLY when the client speaks Darija (llm_backends.darija_llm()).
+                     None = the main `llm` also writes the Darija lines.
         """
         self.rng = random.Random(seed)
         self.llm = llm
+        self.darija_llm = darija_llm
         self.max_turns = max_turns
         self.judge = Judge(judge_llm)
         self.difficulty = difficulty
@@ -331,18 +468,62 @@ class ClientSimulatorAgent:
         self.llm_strict = llm_strict
         self.llm_errors: list[str] = []             # most recent LLM failures (max 10)
 
+    def _has_llm(self, req: "ClientRequest") -> bool:
+        return self._pick_llm(req) is not None
+
+    def _derja_style(self, req: "ClientRequest") -> bool:
+        """True when the Darija model is a conversation model (ESPRIT-Derja) that needs the short,
+        plain-text prompt instead of the long JSON one."""
+        return req.language == "darija" and getattr(self._pick_llm(req), "prompt_style", "") == "derja"
+
+    def _pick_llm(self, req: "ClientRequest"):
+        """The model that speaks for this client: the Darija model for Darija calls, else the main one."""
+        if req.language == "darija" and self.darija_llm is not None:
+            return self.darija_llm
+        return self.llm or (self.darija_llm if req.language == "darija" else None)
+
+    def _ask_llm(self, req: "ClientRequest", prompt: str, must: tuple = ()) -> str:
+        """Call the right model. For Darija the answer goes through darija_issues(): on a problem
+        (Arabic script, Moroccan words, French instead of Darija...) the model gets ONE corrective
+        retry; if it is still wrong the error is raised so the caller falls back to the rule bank
+        (hand-written Tunisian), never to a fake Darija line."""
+        llm = self._pick_llm(req)
+        raw = llm(prompt)
+        if req.language != "darija":
+            return raw
+        for attempt in (0, 1):
+            data = extract_json(raw)
+            text = data.get("reply") if data else raw
+            problems = darija_issues(text) if isinstance(text, str) else []
+            if must and isinstance(text, str):       # a real client must give the exact data that was asked
+                compact = text.replace(" ", "")
+                problems += [f"la valeur exacte « {m} » manque" for m in must if m.replace(" ", "") not in compact]
+            if not problems:
+                return raw
+            if attempt == 0:
+                self.stats["darija_retry"] += 1
+                fmt = ("Même format." if getattr(llm, "prompt_style", "") == "derja" else "Même format JSON.")
+                raw = llm(prompt + "\n\nATTENTION : ta réponse précédente était refusée (" + "; ".join(problems)
+                          + "). Réécris-la en vraie darija TUNISIENNE en arabizi, avec des mots comme "
+                          "tawa, bech, barcha, mte3i, 3lech, ma ...ch. " + fmt)
+        raise ValueError("Darija quality check failed: " + "; ".join(problems))
+
     @property
     def llm_backend(self) -> str:
         """Name of the engine that plays the client: claude / gemini / ollama / custom / rules."""
-        return "rules" if self.llm is None else getattr(self.llm, "backend", "custom")
+        main = self.llm or self.darija_llm
+        return "rules" if main is None else getattr(main, "backend", "custom")
 
     def engine_report(self, st: Optional["ConversationState"] = None) -> dict:
         """What really produced the client's words. Feeds the UI line 'Client engine: ...'."""
         c = st.engine if st is not None else self.stats
         llm_n, rules_n = c.get("llm", 0) + c.get("llm_opening", 0), c.get("rules", 0)
-        mode = ("rules" if self.llm is None else "llm" if llm_n and not rules_n
+        mode = ("rules" if self.llm is None and self.darija_llm is None else "llm" if llm_n and not rules_n
                 else "mixed" if llm_n else "llm_failed" if rules_n else "llm")
-        return dict(mode=mode, backend=self.llm_backend, model=getattr(self.llm, "model", ""),
+        return dict(mode=mode, backend=self.llm_backend, model=getattr(self.llm or self.darija_llm, "model", ""),
+                    darija_backend=getattr(self.darija_llm, "backend", "") if self.darija_llm else "",
+                    darija_model=getattr(self.darija_llm, "model", "") if self.darija_llm else "",
+                    darija_retries=self.stats.get("darija_retry", 0),
                     llm_turns=llm_n, rule_turns=rules_n,
                     last_error=(st.llm_error if st is not None and st.llm_error
                                 else self.llm_errors[-1] if self.llm_errors else ""))
@@ -383,7 +564,11 @@ class ClientSimulatorAgent:
         cfg = PROFILE_CONFIG[profile]
 
         fraud = profile == Profile.AT_RISK and self.rng.random() < min(0.95, 0.7 + 0.25 * d)
-        if fraud:
+        if sc.intent_only:                                  # compliance-trap scenario: honest caller, fixed intent
+            fraud = False
+        if sc.intent_only:
+            intent = sc.intent_only
+        elif fraud:
             intent = self.rng.choice(FRAUD_INTENTS)
         else:
             weights = []
@@ -428,7 +613,7 @@ class ClientSimulatorAgent:
         st.sentiment = sentiment_of(st)
         if st.status == "active":
             st.history.append(("client", req.opening_message))
-            if self.llm is not None:
+            if self._has_llm(req):
                 self._llm_opening(st)
         return st
 
@@ -464,7 +649,11 @@ class ClientSimulatorAgent:
             self.apply_wait(st, hold_seconds)
             if st.status == "abandoned":
                 return None
-        return self.judge.analyse(advisor_msg, last_client)
+        f = self.judge.analyse(advisor_msg, last_client)
+        # per-turn record read by scorecard.py (flags are copied: they are plain booleans / lists)
+        st.turn_log.append(dict(turn=st.turn, advisor=advisor_msg, flags=dict(f), mood_before=round(st.mood, 3),
+                                sentiment_before=st.sentiment))
+        return f
 
     # ---- phase 2: update (mood, fraud pressure, end of call) --------------------
     def update(self, st: ConversationState, f: dict) -> None:
@@ -495,6 +684,9 @@ class ClientSimulatorAgent:
         st.sentiment = sentiment_of(st)
         st.mood_trace.append(round(st.mood, 3))
         st.history.append(("client", text))
+        if st.turn_log:
+            st.turn_log[-1]["mood_after"] = round(st.mood, 3)
+            st.turn_log[-1]["client"] = text
         return text
 
     def run_conversation(self, req: ClientRequest, advisor_fn: Callable[[AdvisorView], str],
@@ -552,7 +744,7 @@ class ClientSimulatorAgent:
     # ---- text generation ---------------------------------------------------
     def _client_turn(self, st: ConversationState, f: dict):
         """Returns (text, mood_adjust, hang_up, emotion). LLM first, rules as the safety net."""
-        if self.llm is not None:
+        if self._has_llm(st.request):
             try:
                 out = self._llm_turn(st, f)
                 st.engine["llm"] += 1
@@ -568,10 +760,39 @@ class ClientSimulatorAgent:
                 self.stats["llm_failed"] += 1           # fall back to rules
         st.engine["rules"] += 1
         self.stats["rules"] += 1
-        return self._rule_turn(st, f), 0.0, False, None
+        text = self._rule_turn(st, f)
+        mine = [t for who, t in st.history if who == "client"]
+        if st.status == "active" and text in mine[-2:]:     # the rule bank would say the same thing again
+            st.repeats += 1
+            text = self.rng.choice(banks.REPHRASE[self._lang(st.request)])
+        return text, 0.0, False, None
 
     def _llm_turn(self, st: ConversationState, f: dict):
-        raw = self.llm(self._llm_prompt(st, f))
+        """One LLM turn, with an anti-repetition guard: if the line is (nearly) one the client already
+        said, the model gets ONE retry that shows it the repeated line and demands something new."""
+        out = self._llm_turn_once(st, f)
+        mine = [t for who, t in st.history if who == "client"][-3:]
+        if is_repeat(out[0], mine):
+            st.repeats += 1
+            self.stats["repeat_retry"] += 1
+            extra = (f"\n\nATTENTION : ta réplique « {out[0][:120]} » répète ce que tu as déjà dit. Écris une réplique "
+                     "DIFFÉRENTE : un fait nouveau, une vraie question, ou une réaction nouvelle à ce que vient de dire "
+                     "le conseiller, avec d'autres mots. Même format qu'avant.")
+            try:
+                retry = self._llm_turn_once(st, f, extra)
+                if not is_repeat(retry[0], mine):
+                    return retry
+            except Exception:
+                pass                                              # keep the first answer rather than fail the call
+        return out
+
+    def _llm_turn_once(self, st: ConversationState, f: dict, extra: str = ""):
+        must = ()
+        if self._derja_style(st.request) and not st.request.is_fraudster:
+            asked = f["identity_fields"] or (list(DEFAULT_FIELDS) if f["identite"] else [])
+            must = tuple(str(st.request.persona.true_facts[k]) for k in asked
+                         if k in st.request.persona.true_facts and k in ("birth_date", "card_last4"))
+        raw = self._ask_llm(st.request, self._llm_prompt(st, f) + extra, must)
         data = extract_json(raw)
         if data is None:                                  # older hooks return the plain sentence
             text = raw.strip() if isinstance(raw, str) else ""
@@ -605,6 +826,8 @@ class ClientSimulatorAgent:
 
     def _opening_prompt(self, req: ClientRequest) -> str:
         """Prompt for the client's first sentence. Contains no secret fact and never mentions fraud."""
+        if self._derja_style(req):
+            return self._derja_opening_prompt(req)
         urgency = {1: "pas pressé", 2: "assez pressé", 3: "très pressé"}[req.urgency]
         return (f"{ROLE_RULES}\n"
                 f"Contexte : tu appelles ta banque, {self._lang_instruction(req.language)}\n"
@@ -619,7 +842,7 @@ class ClientSimulatorAgent:
         """The first sentence also comes from the LLM (it used to be a fixed template).
         On any failure the template opener stays and the error is recorded."""
         try:
-            raw = self.llm(self._opening_prompt(st.request))
+            raw = self._ask_llm(st.request, self._opening_prompt(st.request))
             data = extract_json(raw)
             text = data.get("reply") if data else None
             if data is None and isinstance(raw, str) and raw.strip() and not raw.lstrip().startswith(("{", "```")):
@@ -638,7 +861,62 @@ class ClientSimulatorAgent:
             log.warning("LLM opening failed, template kept: %s", msg)
             self.stats["llm_failed"] += 1
 
+    # ---- ESPRIT-Derja prompts: short, plain text, no JSON (it is a chat model, not an instruction follower)
+    @staticmethod
+    def _mood_word(mood: float) -> str:
+        return ("ghadhban barcha" if mood < -0.5 else "mdhayek" if mood < -0.15
+                else "3adi" if mood < 0.3 else "mrtah")
+
+    def _derja_opening_prompt(self, req: ClientRequest) -> str:
+        urgency = {1: "mouch metsarra3", 2: "chwaya metsarra3", 3: "metsarra3 barcha"}[req.urgency]
+        return (f"Inti CLIENT (mouch conseiller) w tkalem ba3d ma 7allet khat ta3 el banque. Esmek {req.client_name}. "
+                f"Inti {urgency} w el mood mte3ek: {self._mood_word(req.initial_mood)}.\n"
+                f"El mochkla mte3ek: « {req.opening_message} ».\n"
+                "9oul el mochkla hedhi b klemtek inti, bel arabizi tounsi, jomla wa7da 9sira, "
+                "bidoun ma t3ti ma3lomet shakhsiya. Ma tbadech b « Bonjour comment puis-je vous aider ». "
+                "Jaweb bel jomla bark.")
+
+    def _derja_prompt(self, st: ConversationState, f: dict) -> str:
+        r, p = st.request, st.request.persona
+        asked = f["identity_fields"] or (list(DEFAULT_FIELDS) if f["identite"] else [])
+        labels = {"birth_date": "date de naissance (JJ/MM/AAAA)", "card_last4": "4 derniers chiffres de la carte",
+                  "phone": "numéro de téléphone"}
+        if r.is_fraudster:
+            known = {k: v for k, v in p.known_facts.items() if k in asked}
+            fr = st.fraud
+            ladder = banks.FRAUD_LADDERS[fr["strategy"]]["da"][min(fr["pressure"], 2)]
+            who = (f"Inti fi 7a9i9a nasseb (fraudeur) w tet3adda b esm {p.name}; ma tgoulch abadan. "
+                   f"Ma3lomet elli ta3refha: {known or 'ken el esm'}. El ba9i ma ta3refhoush: esquive walla 9oul "
+                   f"ma tfakkarch, ma tkhamenhech. Stratégie: {fr['strategy']}, pression {fr['pressure']}/3. "
+                   f"Exemple ta3 jomla fi el mostawa hedha: « {ladder} ». Ken el conseiller yrefdh, zid dhghet.")
+        elif asked:
+            t = p.true_facts
+            vals = "; ".join(f"{labels[k]}: {t[k]}" for k in asked if k in t)
+            who = (f"El conseiller talablek ma3lomet: a3tih-hom bel dhabt kima houma (ma tbaddel 7atta ra9m): {vals}. "
+                   "Ma t3ti abadan code secret, mot de passe, CVV.")
+        else:
+            who = ("Ma t3ti 7atta ma3louma shakhsiya tawa, ken el conseiller ma talabhech. "
+                   "Ken talablek code secret, mot de passe walla CVV: erfodh.")
+        status_note = {"resolved": "El mochkla t7allet: chkor el conseiller w khallas el mokalma.\n",
+                       "escalated": "El conseiller 7awelek l responsable: 9oul rayek fel 7awel.\n",
+                       "hung_up": "Inti taabt: 9oul inek bech tsakker el khat.\n"}.get(st.status, "")
+        hist = "\n".join(f"{'CONSEILLER' if w == 'conseiller' else 'MOI (client)'}: {t}" for w, t in st.history)
+        trap = TRAP_NOTES_DA.get(r.intent, "")
+        mem = memory_block(st.history, "derja")
+        return (f"{trap + chr(10) if trap else ''}{mem}"
+                f"Inti CLIENT (mouch conseiller) tkalem m3a conseiller ta3 el banque. Esmek {p.name}. "
+                f"Houwa mochkelek: {p.goal}.\n"
+                f"Mood mte3ek: {self._mood_word(st.mood)} ({st.emotion}). Ton: {PROFILE_CONFIG[r.profile]['tone']}.\n"
+                f"{who}\n{status_note}"
+                f"El mokalma:\n{hist}\n"
+                "Jaweb tawa 3la akher jomla ta3 el CONSEILLER ki client: jomla 1 walla 2 9sar, arabizi tounsi "
+                "(kelmet banque bel français: carte, compte, virement, solde, frais...). "
+                "Ma tab3athech jomla ta3 conseiller (« je vais vérifier », « comment puis-je vous aider »). "
+                "Jaweb bel jomla bark, bidoun esm w bidoun guillemets.")
+
     def _llm_prompt(self, st: ConversationState, f: dict) -> str:
+        if self._derja_style(st.request):
+            return self._derja_prompt(st, f)
         r, p = st.request, st.request.persona
         tone = PROFILE_CONFIG[r.profile]["tone"]
         lang = self._lang_instruction(r.language)
@@ -665,6 +943,9 @@ class ClientSimulatorAgent:
                        "hung_up": "Tu es à bout : annonce que tu raccroches.\n"}.get(st.status, "")
         labels = {"conseiller": "CONSEILLER", "client": "MOI (le client)"}
         hist = "\n".join(f"{labels.get(who_, who_)}: {txt}" for who_, txt in st.history)
+        said = tuple(claims_from_text(" ".join(t for w_, t in st.history if w_ == "client")).keys())
+        mem = memory_block(st.history, "fr", said)
+        trap = TRAP_NOTES.get(r.intent, "")
         return (
             f"{ROLE_RULES}\n"
             f"Contexte : tu appelles ta banque, {lang}\n"
@@ -676,7 +957,9 @@ class ClientSimulatorAgent:
             + (f"Le conseiller vient de demander : {', '.join(asked)}. Donne l'information en clair dans ta "
                f"réplique (date au format JJ/MM/AAAA, 4 chiffres pour la carte, numéro à 8 chiffres).\n"
                if asked else "")
+            + (trap + "\n" if trap else "")
             + status_note
+            + mem
             + f"Conversation (les lignes « {labels['client']} » sont TES répliques passées) :\n{hist}\n"
             f"→ C'est de nouveau à TOI, le CLIENT, de parler. Réponds à la dernière phrase du CONSEILLER.\n"
             "Réponds par UN SEUL objet JSON, sans texte autour : "
@@ -762,7 +1045,18 @@ class ClientSimulatorAgent:
                     identity_verified=st.identity_verified, verification_asked=st.verification_asked,
                     wrong_claims=st.wrong_claims, sensitive_requests=st.sensitive_requests,
                     final_emotion=st.emotion, final_mood=round(st.mood, 3), final_sentiment=st.sentiment,
-                    mood_trace=list(st.mood_trace), engine=dict(st.engine), llm_error=st.llm_error)
+                    mood_trace=list(st.mood_trace), engine=dict(st.engine), llm_error=st.llm_error,
+                    repeats=st.repeats, **_qa_summary(st))
+
+
+def _qa_summary(st: "ConversationState") -> dict:
+    """Headline QA numbers for the KPIs (full detail: scorecard.score_call)."""
+    try:
+        from scorecard import score_call
+        sc = score_call(st)
+        return dict(qa_total=sc["total"], qa_grade=sc["grade"], qa_critical=len(sc["critical_failures"]))
+    except Exception:                                   # the scorecard must never break a call
+        return dict(qa_total=None, qa_grade=None, qa_critical=0)
 
 
 # --------------------------------------------------------------------------

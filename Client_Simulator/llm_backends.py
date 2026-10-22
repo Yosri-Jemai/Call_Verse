@@ -54,6 +54,13 @@ load_env()
 
 DEFAULT_MODELS = {"claude": "claude-sonnet-5-5", "gemini": "gemini-2.5-flash",
                   "groq": "llama-3.3-70b-versatile", "ollama": "mistral"}
+# Dedicated "darija" role: the model that writes ONLY the Tunisian Arabizi lines. Pick it with
+# DARIJA_LLM=gemini|claude|groq|ollama and DARIJA_MODEL=<model name> in .env (both optional).
+# Tunisian Darija is poorly covered by small models (llama 3B / mistral answer in French or MSA),
+# so the preference order is the models that handle Maghrebi Arabic best.
+DARIJA_PREFERENCE = ("gemini", "claude", "groq", "ollama")   # "derja" goes first when DERJA_BASE_URL is set
+DARIJA_MODELS = {"claude": "claude-sonnet-5-5", "gemini": "gemini-2.5-pro",
+                 "groq": None, "ollama": None}          # None = best one that is really available
 JUDGE_MODELS = {"claude": "claude-haiku-5-5", "gemini": "gemini-2.5-flash",
                 "groq": "llama-3.1-8b-instant", "ollama": "mistral"}
 
@@ -238,9 +245,13 @@ def gemini_llm(model: str = DEFAULT_MODELS["gemini"], max_tokens: int = 500, tem
     except ImportError as e:
         raise LLMError("The 'google-genai' package is missing: pip install google-genai") from e
     client = genai.Client()
+    is_pro = "pro" in model
+    if is_pro:
+        max_tokens = max(max_tokens, 1500)     # Pro always thinks: leave room for the visible answer
     cfg = dict(max_output_tokens=max_tokens, temperature=temperature)
     try:   # 2.5 models spend output tokens on "thinking": that truncated the JSON answers
-        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        # Flash can switch thinking off (0). Pro cannot: its minimum budget is 128.
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=128 if is_pro else 0)
     except Exception:
         pass
 
@@ -254,15 +265,156 @@ def gemini_llm(model: str = DEFAULT_MODELS["gemini"], max_tokens: int = 500, tem
     return _tag(call, "gemini", model)
 
 
+# --------------------------------------------------------------------------
+# ESPRIT-Derja-Qwen3-8B-v2: Tunisian Darija (Arabic + Arabizi) model, used ONLY for Darija lines.
+# https://huggingface.co/ESPRIT-Group/ESPRIT-Derja-Qwen3-8B-v2   (Apache 2.0, LoRA on Qwen3-8B)
+# It is a conversation model: it does not follow long JSON prompts, so the simulator gives it a
+# short prompt (prompt_style = "derja") and takes a plain-text answer.
+# Two ways to run it:
+#   derja     : OpenAI-compatible server (vLLM, Docker Model Runner, ESPRIT AI Forge...), see DERJA_* env vars
+#   derja_hf  : load it in this process with `transformers` (needs a GPU with ~16 GB, or DERJA_4BIT=1)
+# --------------------------------------------------------------------------
+DERJA_MODEL_ID = "ESPRIT-Group/ESPRIT-Derja-Qwen3-8B-v2"
+DERJA_SERVED_NAME = "ESPRIT-Derja-Qwen3-8B-v2"
+DERJA_SYSTEM = (
+    "Inti ESPRIT-Derja, modele IA ta3 ESPRIT Tunisie. Toujours jaweb bel dialecte tounsi (darija tunisienne).\n"
+    "Ista3mel l-arabizi (3=ع, 7=ح, 9=ق, 5=خ, 8=غ) walla l-3arbiya tounsiya 7asb ki yekteblek el user.\n"
+    "Jaweb b tari9a tabi3iya, kima tounsi ya7ki m3a sa7bou."
+)
+
+
+def _derja_clean(text: str) -> str:
+    """Remove what Qwen3 / chat models add around the answer: <think> blocks, role labels, quotes."""
+    import re
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"</?think>", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^(?:MOI(?: \(le client\))?|CLIENT|Client|Assistant|ESPRIT-Derja)\s*:\s*", "", text).strip()
+    return text.strip().strip('"\u00ab\u00bb').strip()
+
+
+def _derja_base_url() -> str:
+    return os.getenv("DERJA_BASE_URL", "http://localhost:8009/v1").strip().rstrip("/")
+
+
+def derja_llm(model: str | None = None, max_tokens: int = 200, temperature: float = 0.7,
+              timeout: float = 90.0):
+    """ESPRIT-Derja-Qwen3-8B-v2 behind an OpenAI-compatible endpoint.
+    .env: DERJA_BASE_URL (default http://localhost:8009/v1), DERJA_API_KEY (optional),
+    DERJA_SERVED_MODEL (default ESPRIT-Derja-Qwen3-8B-v2 = the --served-model-name of vLLM)."""
+    base = _derja_base_url()
+    served = model or os.getenv("DERJA_SERVED_MODEL") or DERJA_SERVED_NAME
+    headers = {"Authorization": f"Bearer {os.getenv('DERJA_API_KEY')}"} if os.getenv("DERJA_API_KEY") else {}
+    try:                                    # fail fast with a clear message if the server is not up
+        data = _http_json(base + "/models", headers=headers, timeout=4)
+    except LLMError as e:
+        raise LLMError(f"ESPRIT-Derja server not reachable at {base}. Start it (see README: 'Darija model') "
+                       f"or set DERJA_BASE_URL. Details: {e}") from e
+    ids = [m.get("id") for m in (data.get("data") or []) if isinstance(m, dict)]
+    if ids and served not in ids:
+        if model:
+            raise LLMError(f"Model '{served}' is not served at {base}. Served: {', '.join(map(str, ids))}")
+        served = ids[0]                     # one model served: use it, whatever name it was given
+    state = {"template_kwargs": True}
+
+    def call(prompt: str) -> str:
+        payload = {"model": served, "temperature": temperature, "max_tokens": max_tokens,
+                   "messages": [{"role": "system", "content": DERJA_SYSTEM},
+                                {"role": "user", "content": prompt}]}
+        if state["template_kwargs"]:        # Qwen3: no "thinking" block, only the answer
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        try:
+            r = _http_json(base + "/chat/completions", payload, headers, timeout=timeout)
+        except LLMError as e:
+            if state["template_kwargs"] and "chat_template_kwargs" in str(e):
+                state["template_kwargs"] = False   # this server rejects the extra field: retry without
+                payload.pop("chat_template_kwargs")
+                r = _http_json(base + "/chat/completions", payload, headers, timeout=timeout)
+            else:
+                raise
+        try:
+            text = _derja_clean(r["choices"][0]["message"]["content"] or "")
+        except (KeyError, IndexError, TypeError):
+            raise LLMError(f"Unexpected answer from the Derja server: {str(r)[:200]}")
+        if not text:
+            raise LLMError("ESPRIT-Derja returned no text")
+        return text
+    fn = _tag(call, "esprit-derja", served)
+    fn.prompt_style = "derja"
+    return fn
+
+
+_HF_CACHE: dict = {}
+
+
+def derja_hf_llm(model: str | None = None, max_tokens: int = 200, temperature: float = 0.7):
+    """ESPRIT-Derja-Qwen3-8B-v2 loaded locally with `transformers` (first call downloads ~16 GB).
+    pip install transformers torch accelerate   (+ bitsandbytes and DERJA_4BIT=1 for a 6 GB GPU)."""
+    import threading
+    model_id = model or os.getenv("DERJA_HF_MODEL") or DERJA_MODEL_ID
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as e:
+        raise LLMError("Local Derja needs: pip install transformers torch accelerate") from e
+    if model_id not in _HF_CACHE:
+        kw = {"device_map": "auto"}
+        if os.getenv("DERJA_4BIT") == "1":
+            try:
+                from transformers import BitsAndBytesConfig
+                kw["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
+            except ImportError as e:
+                raise LLMError("DERJA_4BIT=1 needs: pip install bitsandbytes") from e
+        else:
+            kw["torch_dtype"] = torch.bfloat16
+        try:
+            tok = AutoTokenizer.from_pretrained(model_id)
+            mdl = AutoModelForCausalLM.from_pretrained(model_id, **kw)
+        except Exception as e:
+            raise LLMError(f"Cannot load {model_id}: {type(e).__name__}: {e}") from e
+        _HF_CACHE[model_id] = (tok, mdl, threading.Lock())
+    tok, mdl, lock = _HF_CACHE[model_id]
+
+    def call(prompt: str) -> str:
+        msgs = [{"role": "system", "content": DERJA_SYSTEM}, {"role": "user", "content": prompt}]
+        try:
+            text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+        except TypeError:
+            text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        inputs = tok(text, return_tensors="pt").to(mdl.device)
+        with lock:                           # one generation at a time (API requests are threaded)
+            out = mdl.generate(**inputs, max_new_tokens=max_tokens, temperature=temperature, do_sample=True)
+        answer = _derja_clean(tok.decode(out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True))
+        if not answer:
+            raise LLMError("ESPRIT-Derja (local) returned no text")
+        return answer
+    fn = _tag(call, "esprit-derja-local", model_id)
+    fn.prompt_style = "derja"
+    return fn
+
+
 FACTORIES = {"claude": claude_llm, "gemini": gemini_llm, "groq": groq_llm, "ollama": ollama_llm}
+
+
+# Backends that only make sense for Darija lines: not offered as the main client model, not auto-picked.
+DARIJA_ONLY = {"derja": derja_llm, "derja_hf": derja_hf_llm}
 
 
 def make_backend(name: str, role: str = "client", model: str | None = None):
     """Build one backend by name. role='judge' uses a cheaper model and temperature 0.
     `model` overrides the default (e.g. a model listed by list_models('ollama'))."""
+    if name in DARIJA_ONLY:
+        return DARIJA_ONLY[name](model=model) if model else DARIJA_ONLY[name]()
     if name not in FACTORIES:
-        raise LLMError(f"Unknown LLM backend '{name}' (choose: {', '.join(FACTORIES)})")
+        raise LLMError(f"Unknown LLM backend '{name}' (choose: {', '.join(list(FACTORIES) + list(DARIJA_ONLY))})")
     kw = {}
+    if role == "darija":
+        kw = {"temperature": 0.9}
+        if name != "ollama":
+            kw["max_tokens"] = 600
+        if DARIJA_MODELS.get(name):
+            kw["model"] = DARIJA_MODELS[name]
+        if name == "groq":
+            kw["model"] = None
     if role == "judge":
         kw = {"model": JUDGE_MODELS[name], "temperature": 0.0}
         if name != "ollama":
@@ -287,6 +439,11 @@ def available_backends() -> dict:
             out[name] = str(e)
         except Exception as e:
             out[name] = f"{type(e).__name__}: {e}"
+    try:                                     # Darija-only model: cheap server ping, no 16 GB download
+        derja_llm()
+        out["derja"] = "ready (ESPRIT-Derja-Qwen3-8B-v2, Darija only)"
+    except LLMError as e:
+        out["derja"] = str(e)
     return out
 
 
@@ -299,6 +456,24 @@ def auto_llm(role: str = "client", prefer: tuple = ("claude", "gemini", "groq", 
         except Exception as e:
             why.append(f"{name}: {e}")
     raise LLMError("No LLM backend available -> " + " | ".join(why))
+
+
+def darija_llm(name: str | None = None, model: str | None = None):
+    """The model dedicated to Tunisian Darija. Order of precedence:
+    explicit `name` > DARIJA_LLM env > first ready backend in DARIJA_PREFERENCE.
+    DARIJA_MODEL (env) overrides the model name. Raises LLMError listing why each was skipped."""
+    name = name or os.getenv("DARIJA_LLM") or None
+    model = model or os.getenv("DARIJA_MODEL") or None
+    if name and name not in ("auto", "same"):
+        return make_backend(name, "darija", model)
+    why = []
+    order = (("derja",) if os.getenv("DERJA_BASE_URL") else ()) + DARIJA_PREFERENCE
+    for n in order:
+        try:
+            return make_backend(n, "darija", model if name is None and os.getenv("DARIJA_LLM") else None)
+        except Exception as e:
+            why.append(f"{n}: {e}")
+    raise LLMError("No Darija LLM available -> " + " | ".join(why))
 
 
 def check_llm(llm) -> dict:

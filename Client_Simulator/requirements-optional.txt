@@ -4,3 +4,8 @@ anthropic        # Claude client replies
 # ollama: no pip package needed any more (HTTP API); Groq also needs none
 gTTS             # client voice (needs internet)
 openai-whisper   # advisor voice -> text (needs ffmpeg installed)
+# ESPRIT-Derja-Qwen3-8B-v2 loaded locally (backend "derja_hf"; not needed if you use a vLLM server)
+# transformers
+# torch
+# accelerate
+# bitsandbytes     # only with DERJA_4BIT=1

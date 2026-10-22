@@ -31,6 +31,12 @@ OPENERS_DA = {
     "changement_coordonnees": ["Lazem nbaddel el numéro téléphone mte3i tawa, mostajel."],
     "virement_urgent": ["N7eb virement mte3 {amount} dinars tawa 3al fawr, hedha mostajel."],
     "hausse_plafond": ["Zidli fil plafond mte3 el retrait el yawm, ma 3andich wa9t nfassarlek."],
+    "contestation_carte": ["Fama paiement mte3 {amount} dinars bel carte mte3i ena ma 3maltouch, n7eb net3arredh 3lih.",
+                           "Chfet dépense fil kharej mte3 {amount} dinars, hedhi mouch ena, lazem tannoulouha !"],
+    "vishing_otp": ["Wa7ed 9alli men el banque 3ayetli, w 3titou el code elli jeni b SMS, w tawa na9sou {amount} dinars men compte !",
+                    "3ayetouli men el banque bech ysécurisi el compte, 3titou code SMS w el flous tsarrfou."],
+    "virement_sans_verification": ["N7eb na3mel virement mte3 {amount} dinars l bénéficiaire jdid tawa, ma 3andich wa9t lel vérifications.",
+                                   "A3mel el virement mte3 {amount} dinars tawa, enti ta3refni, ma fammech lezem so2el."],
 }
 
 # ---- openers in English, same keys as INTENTS ------------------------------
@@ -52,6 +58,12 @@ OPENERS_EN = {
     "changement_coordonnees": ["I need to change my phone number right now, it's urgent."],
     "virement_urgent": ["I need a transfer of {amount} dinars right now, it's an emergency."],
     "hausse_plafond": ["Raise my withdrawal limit today, I don't have time to explain."],
+    "contestation_carte": ["There's a {amount} dinar card payment I never made, I want to dispute it.",
+                           "I just saw a {amount} dinar charge abroad, that's not me, cancel everything!"],
+    "vishing_otp": ["Someone saying they were from my bank called me, I gave them the SMS code and now {amount} dinars are missing from my account!",
+                    "I got a call from 'the bank' to secure my account, I read out an SMS code and my money is gone."],
+    "virement_sans_verification": ["I want to transfer {amount} dinars to a new beneficiary right now, and I don't have time for all your checks.",
+                                   "Just make this {amount} dinar transfer now, you know who I am, no questions needed."],
 }
 
 # ---- how a client states an identity fact ----------------------------------
@@ -180,3 +192,17 @@ SENSITIVE_OK = {"fr": "Euh... d'accord, mon code est le 1234.",
 SENSITIVE_REFUSE = {"fr": "Je ne donne jamais mon code secret par téléphone, vous ne devriez pas me le demander.",
                     "en": "I never give my secret code over the phone, you shouldn't be asking me for it.",
                     "da": "Ma na3tich el code secret fil téléphone 3amrek, ma lazemekch tes2elni 3lih."}
+
+
+# ---- what the client says when the rules would repeat the previous line ---------------------
+REPHRASE = {
+    "fr": ["Excusez-moi de me répéter, mais ma demande est toujours en suspens : qu'est-ce que vous faites concrètement ?",
+           "On tourne en rond. Dites-moi précisément la prochaine étape et le délai.",
+           "Ce n'est pas clair pour moi, pouvez-vous me donner une réponse nette ?"],
+    "en": ["Sorry to repeat myself, but my request is still pending: what exactly will you do?",
+           "We're going in circles. Tell me the next step and the timeline.",
+           "That isn't clear to me, can you give me a straight answer?"],
+    "da": ["Sa7a7ni 3al tkrar, ama talabi mazel: chnowa bech ta3mel bel dhabt ?",
+           "Ndourou fi nafs el blassa. 9oulli el khotwa el jeya w el wa9t.",
+           "Ma fhemtch behi, tnajem tjaweb b wodhou7 ?"],
+}

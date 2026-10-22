@@ -93,7 +93,7 @@ AFTER_NEGATORS = {"pas", "not"}
 
 
 def _tokens(s: str) -> list[str]:
-    return re.findall(r"[a-zàâäçéèêëîïôöûùüÿœ]+|\d+", s.lower().replace("’", "'").replace("'", " "))
+    return re.findall(r"[a-zàâäçéèêëîïôöûùüÿœ\u0600-\u06ff]+|\d+", s.lower().replace("’", "'").replace("'", " "))
 
 
 def _sentences(msg: str) -> list[list[str]]:
@@ -110,6 +110,8 @@ def _sentences(msg: str) -> list[list[str]]:
 
 def _hits(tokens: list[str], phrase: str) -> list[int]:
     p = _tokens(phrase)
+    if not p:                                    # an empty phrase must never match everything
+        return []
     return [i for i in range(len(tokens) - len(p) + 1) if tokens[i:i + len(p)] == p]
 
 
@@ -137,6 +139,81 @@ def _find(sentences: list[list[str]], phrases: list[str], *, check_negation: boo
     return done, blocked and not done
 
 
+
+# --------------------------------------------------------------------------
+# Extra signals used by the QA scorecard (scorecard.py). Rules only, French / English plus a few
+# Tunisian greetings; the LLM judge keeps its own keys and these are always computed by the rules.
+# --------------------------------------------------------------------------
+EXTRA_PHRASES = {
+    # the advisor asks the client to read / send a one-time code received by SMS: never allowed
+    "otp_demande": ["code sms", "code reçu", "code recu", "otp", "code de validation", "code à usage unique",
+                    "code a usage unique", "mot de passe à usage unique", "one time password",
+                    "one time code", "sms code", "code you received", "verification code", "code de vérification",
+                    "code de verification", "الكود", "كود"],
+    # an unconditional refund promise before any investigation
+    "remboursement_garanti": ["vous serez remboursé", "vous serez remboursée", "vous allez être remboursé",
+                              "vous serez rembourse", "remboursement garanti", "je vous garantis", "garanti",
+                              "vous récupérerez votre argent", "you will be refunded", "you will get your money back",
+                              "guaranteed refund", "i guarantee", "you will be reimbursed"],
+    "blocage": ["bloqué", "bloquée", "bloque", "bloquer", "bloquons", "opposition", "suspendu", "suspendue",
+                "gelé", "désactivé", "blocked", "block", "blocking", "frozen", "suspended", "deactivated"],
+    "reference": ["numéro de dossier", "numero de dossier", "numéro de réclamation", "numéro de ticket",
+                  "numéro de suivi", "référence", "reference", "ticket", "dossier numéro", "reference number",
+                  "ticket number", "case number", "tracking number", "claim number"],
+    "delai": ["délai", "delai", "jours ouvrables", "jours", "heures", "sous 48", "sous 72", "working days",
+              "business days", "within 48", "within 72", "days", "hours", "dans les 24"],
+    # warns the client never to share codes
+    "conseil_securite": ["ne communiquez jamais", "ne partagez jamais", "ne donnez jamais", "ne communiquez à personne",
+                         "ne communiquez a personne", "jamais communiquer", "ne divulguez", "ne vous demandera jamais",
+                         "ne vous demandera pas", "never share", "never give", "do not share", "dont share",
+                         "never disclose", "will never ask", "never ask you"],
+    "securite_raison": ["pour votre sécurité", "pour votre securite", "raisons de sécurité", "raison de sécurité",
+                        "obligatoire", "règle de sécurité", "regle de securite", "for your security",
+                        "security reasons", "mandatory", "required for security", "security rule"],
+    "accueil": ["bonjour", "bonsoir", "hello", "good morning", "good afternoon", "good evening", "salam",
+                "marhba", "ahla", "مرحبا", "السلام", "عسلامة", "أهلا"],
+    "offre_aide": ["comment puis-je", "je vous écoute", "je vous ecoute", "en quoi puis-je", "puis-je vous aider",
+                   "comment je peux", "how can i help", "how may i help", "what can i do for you",
+                   "how can i assist", "bech nesta3ed", "نجم نعاونك", "كيفاش نجم"],
+    "cloture": ["autre chose", "autre question", "bonne journée", "bonne journee", "bonne soirée", "bonne soiree",
+                "merci de votre appel", "merci d'avoir appelé", "merci d'avoir appele", "anything else",
+                "have a good day", "have a nice day", "thank you for calling", "thanks for calling", "au revoir",
+                "à bientôt", "a bientot", "bye", "yaatik essaha", "sahha"],
+}
+
+
+def _mention(sentences: list[list[str]], phrases: list[str]) -> bool:
+    """A phrase occurs and is not directly negated ("je ne peux pas bloquer"); future tense is accepted."""
+    for toks in sentences:
+        for ph in phrases:
+            for i in _hits(toks, ph):
+                if not any(t in NEGATORS for t in toks[max(0, i - 4):i]):
+                    return True
+    return False
+
+
+def extra_flags(msg: str) -> dict:
+    """Signals for the QA scorecard. All booleans."""
+    sents = _sentences(msg)
+    alls = [_tokens(msg)]
+    f = {
+        "otp_demande": _find(alls, EXTRA_PHRASES["otp_demande"])[0],           # negation-aware: "never share your SMS code" is fine
+        "remboursement_garanti": _find(sents, EXTRA_PHRASES["remboursement_garanti"])[0],
+        "blocage": _mention(sents, EXTRA_PHRASES["blocage"]),
+        "reference": _mention(sents, EXTRA_PHRASES["reference"]) or bool(re.search(r"\b[A-Z]{2,4}[-/]?\d{4,}\b", msg)),
+        "delai": _mention(sents, EXTRA_PHRASES["delai"]),
+        "conseil_securite": _find(alls, EXTRA_PHRASES["conseil_securite"], check_negation=False)[0],
+        "securite_raison": _find(alls, EXTRA_PHRASES["securite_raison"], check_negation=False)[0],
+        "accueil": _find(alls, EXTRA_PHRASES["accueil"], check_negation=False)[0],
+        "offre_aide": _find(alls, EXTRA_PHRASES["offre_aide"], check_negation=False)[0],
+        "cloture": _find(alls, EXTRA_PHRASES["cloture"], check_negation=False)[0],
+    }
+    # asking for the code is only a violation when it is a request, not when the advisor says "never share it"
+    if f["otp_demande"] and f["conseil_securite"] and "?" not in msg:
+        f["otp_demande"] = False
+    return f
+
+
 def rule_analyse(msg: str) -> dict:
     sents = _sentences(msg)
     allsents = [_tokens(msg)]                              # questions kept: "votre date de naissance ?" asks for it
@@ -156,6 +233,7 @@ def rule_analyse(msg: str) -> dict:
     rude, _ = _find(sents, PHRASES["rude"], check_negation=False)
     polite, _ = _find(allsents, PHRASES["polite"], check_negation=False)
     f["tone"] = "rude" if rude else "polite" if (polite or f["empathie"]) else "cold" if f["trop_court"] else "neutral"
+    f.update(extra_flags(msg))
     f["judge"] = "rules"
     return f
 

@@ -8,11 +8,14 @@ import {
   getLlmModels,
   getScenarios,
   sendReply,
+  getAudioStatus,
   speechToText,
   startCall,
   textToSpeech,
 } from "@/lib/api";
+import { listenOnce, measureNoise, watchVoice } from "@/lib/vad";
 import MoodStrip from "./MoodStrip";
+import ScorecardView from "./Scorecard";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "In progress",
@@ -91,6 +94,7 @@ export default function CallPanel() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [scenario, setScenario] = useState("normal");
   const [llm, setLlm] = useState("auto");
+  const [darijaLlm, setDarijaLlm] = useState("auto");   // dedicated model for Darija lines
   const [model, setModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [modelsError, setModelsError] = useState("");
@@ -110,7 +114,6 @@ export default function CallPanel() {
   const [ringing, setRinging] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [speaking, setSpeaking] = useState(false);
-  const recognition = useRef<any>(null);
   // refs: callbacks fired later by the speech APIs must see the CURRENT values, not stale renders
   const callRef = useRef<CallState | null>(null);
   const busyRef = useRef(false);
@@ -118,6 +121,23 @@ export default function CallPanel() {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null); // keeps it alive (Chrome GC bug: onend never fires)
   callRef.current = call;
   phoneRef.current = phone;
+  // Listening engine: "browser" = the browser's own recognition (Chrome / Edge, no key, no server);
+  // "server" = Groq Whisper through the backend (needs GROQ_API_KEY).
+  const [sttEngine, setSttEngine] = useState<"browser" | "server">("browser");
+  const sttRef = useRef<"browser" | "server">("browser");
+  sttRef.current = sttEngine;
+  const browserRec = useRef<any>(null);
+  const [bargeIn, setBargeIn] = useState(false);          // headphones: you may interrupt the client
+  const [audioSt, setAudioSt] = useState<{ stt: string; tts: string } | null>(null);
+  const bargeRef = useRef(false);
+  bargeRef.current = bargeIn;
+  const micRef = useRef<MediaStream | null>(null);
+  const noiseRef = useRef(0.01);
+  const listenAbort = useRef<AbortController | null>(null);
+  const listenStop = useRef<AbortController | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playDone = useRef<(() => void) | null>(null);
+  const interrupted = useRef(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -129,6 +149,9 @@ export default function CallPanel() {
     getScenarios()
       .then(setScenarios)
       .catch((e: Error) => setError(e.message));
+    getAudioStatus()
+      .then(setAudioSt)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -152,7 +175,9 @@ export default function CallPanel() {
     synth.getVoices(); // starts loading the voice list (Chrome loads it lazily)
     return () => {
       synth.cancel();
-      recognition.current?.abort?.();
+      listenAbort.current?.abort();
+      browserRec.current?.abort?.();
+      micRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -160,84 +185,132 @@ export default function CallPanel() {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "smooth" });
   }, [call?.history.length, pending]);
 
-  // Fallback voice: the server turns the text into an mp3 (gTTS, needs internet + `pip install gTTS`).
-  function speakOnServer(text: string): Promise<void> {
-    const { gtts } = speechLang(language, callRef.current?.client.language);
-    const { slow } = voiceProsody(callRef.current?.sentiment);
-    return new Promise<void>((resolve) => {
-      textToSpeech(text, gtts, slow)
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            setSpeaking(false);
-            resolve();
-          };
+  // ---------- microphone ----------
+  // One microphone stream for the whole call, with the browser's echo cancellation / noise suppression.
+  async function getMic(): Promise<MediaStream | null> {
+    if (micRef.current?.active) return micRef.current;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      });
+      micRef.current = stream;
+      noiseRef.current = await measureNoise(stream);
+      return stream;
+    } catch {
+      setError("Microphone blocked: click the lock icon in the address bar, allow the microphone, then retry.");
+      return null;
+    }
+  }
+
+  // ---------- the client's voice ----------
+  function splitSentences(text: string): string[] {
+    const raw = text.split(/(?<=[.!?…])\s+/).filter(Boolean);
+    const out: string[] = [];
+    for (const s of raw) {                                // glue short pieces so each audio request is worth it
+      if (out.length && out[out.length - 1].length < 30) out[out.length - 1] += " " + s;
+      else out.push(s);
+    }
+    return out.length ? out : [text];
+  }
+
+  function stopClientVoice() {
+    interrupted.current = true;
+    audioRef.current?.pause();
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+    playDone.current?.();
+  }
+
+  function playBlob(blob: Blob): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      let stopWatch: (() => void) | null = null;
+      const end = () => {
+        stopWatch?.();
+        URL.revokeObjectURL(url);
+        playDone.current = null;
+        resolve();
+      };
+      playDone.current = end;
+      audio.onended = end;
+      audio.onerror = () => {
+        stopWatch?.();
+        playDone.current = null;
+        reject(new Error("audio playback failed"));
+      };
+      audio
+        .play()
+        .then(() => {
           setSpeaking(true);
-          return audio.play();
+          if (bargeRef.current && micRef.current?.active) {
+            // you start talking over the client: it stops at once and your microphone takes over
+            stopWatch = watchVoice(micRef.current, Math.max(0.06, noiseRef.current * 5), stopClientVoice);
+          }
         })
-        .catch((e: Error) => {
-          setSpeaking(false);
-          setError(`No voice for the client: the browser has no voice and the server voice failed (${e.message}).`);
-          resolve();
-        });
+        .catch(reject);
     });
   }
 
-  // The client talks. Browser voice first; if it makes no sound (no voice installed, Chrome dropping it,
-  // an error) the server voice takes over. Resolves when the client has finished talking.
-  function speak(text: string): Promise<void> {
-    if (!phoneRef.current || !text) return Promise.resolve();
-    const target = language === "auto" ? callRef.current?.client.language ?? "fr" : language;
+  // Server voice: every sentence is requested at once, played in order, so the first sound starts after
+  // ONE short synthesis instead of after the whole answer.
+  async function speakOnServer(text: string): Promise<boolean> {
+    const { gtts } = speechLang(language, callRef.current?.client.language);
+    const pros = voiceProsody(callRef.current?.sentiment);
+    const name = callRef.current?.client.name ?? "";
+    const fetches = splitSentences(text).map((s) =>
+      textToSpeech(s, { lang: gtts, slow: pros.slow, name, rate: Math.min(pros.rate, 1.3), pitch: pros.pitch }),
+    );
+    fetches.forEach((p) => p.catch(() => {}));            // errors are handled where they are awaited
+    interrupted.current = false;
+    try {
+      for (const f of fetches) {
+        const blob = await f;
+        if (interrupted.current) break;
+        await playBlob(blob);
+        if (interrupted.current) break;
+      }
+      setSpeaking(false);
+      return true;
+    } catch (e) {
+      setSpeaking(false);
+      setError(`Server voice failed (${(e as Error).message}). Using the browser voice.`);
+      return false;
+    }
+  }
+
+  // Last resort: the browser's own voice.
+  function speakInBrowser(text: string): Promise<void> {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-    // Darija is written in Latin (Arabizi): no browser voice can read it, so we always use the server
-    // voice, which transliterates to Arabic script first and speaks it with an Arabic voice.
-    if (target === "darija" || !synth) return speakOnServer(text);
+    if (!synth) return Promise.resolve();
     return new Promise<void>((resolve) => {
-      let started = false;
-      let done = false;
-      const finish = () => {
-        if (!done) {
-          done = true;
-          setSpeaking(false);
-          resolve();
-        }
-      };
-      const fallback = () => {
-        if (done) return;
-        done = true;
-        synth.cancel();
-        speakOnServer(text).then(resolve);
+      const done = () => {
+        setSpeaking(false);
+        resolve();
       };
       synth.cancel();
       const { bcp47 } = speechLang(language, callRef.current?.client.language);
       const pros = voiceProsody(callRef.current?.sentiment);
       const u = new SpeechSynthesisUtterance(text);
       u.lang = bcp47;
-      u.rate = pros.rate;       // the client's sentiment colours how it talks (rushed = fast, confused = slow)
+      u.rate = pros.rate;
       u.pitch = pros.pitch;
-      u.volume = pros.volume;
       const prefix = bcp47.slice(0, 2);
       const v = synth.getVoices().find((x) => x.lang.toLowerCase().replace("_", "-").startsWith(prefix));
       if (v) u.voice = v;
-      u.onstart = () => {
-        started = true;
-        setSpeaking(true);
-      };
-      u.onend = finish;
-      u.onerror = (e) => {
-        if (e.error === "canceled" || e.error === "interrupted") finish();
-        else fallback();
-      };
-      utterRef.current = u; // keeps it alive (Chrome GC bug: onend never fires)
-      setTimeout(() => {
-        synth.resume();
-        synth.speak(u);
-      }, 60);
-      setTimeout(() => !started && fallback(), 2500); // no sound after 2.5 s: use the server voice
-      setTimeout(finish, 30000 + text.length * 150); // never block the call loop
+      u.onstart = () => setSpeaking(true);
+      u.onend = done;
+      u.onerror = done;
+      utterRef.current = u;
+      synth.speak(u);
+      setTimeout(done, 30000 + text.length * 150);
     });
+  }
+
+  async function speak(text: string): Promise<void> {
+    if (!phoneRef.current || !text) return;
+    if (!(await speakOnServer(text)) && !interrupted.current) await speakInBrowser(text);
   }
 
   // Ringing before the client picks up (two rings).
@@ -277,23 +350,26 @@ export default function CallPanel() {
     const clientText = c.history[c.history.length - 1]?.text ?? "";
     lastClientText.current = clientText;
     await speak(clientText);
-    muteUntil.current = Date.now() + 600;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (phoneRef.current && c.status === "active" && SR) {
-      await new Promise((r) => setTimeout(r, 250));
-      listen(SR, true);
+    const cut = interrupted.current;                      // you talked over the client: no delay, listen now
+    interrupted.current = false;
+    muteUntil.current = Date.now() + 700;                 // ignore the room echo of the client's own voice
+    if (phoneRef.current && callRef.current?.status === "active" && !busyRef.current) {
+      if (!cut) await new Promise((r) => setTimeout(r, 350));   // let the room echo die out
+      void listen(true);
     }
   }
 
   async function onStart() {
     setBusy(true);
     setError("");
+    if (phoneRef.current && (sttRef.current === "server" || bargeRef.current)) await getMic(); // needs a user gesture
     let started: CallState | null = null;
     try {
       started = await startCall({
         scenario,
         llm,
         model: model || null,
+        darija_llm: darijaLlm,
         language,
         wait_seconds: waitSeconds,
         seed: seed.trim() === "" ? null : Number(seed),
@@ -322,7 +398,7 @@ export default function CallPanel() {
     const message = text.trim();
     const cur = callRef.current;
     if (!cur || cur.status !== "active" || !message || busyRef.current) return;
-    window.speechSynthesis?.cancel(); // the advisor interrupts the client
+    stopClientVoice(); // the advisor interrupts the client
     busyRef.current = true;
     setBusy(true);
     setError("");
@@ -349,8 +425,9 @@ export default function CallPanel() {
 
   async function onEnd() {
     if (!call) return;
-    window.speechSynthesis?.cancel();
-    recognition.current?.abort?.();
+    stopClientVoice();
+    listenAbort.current?.abort();
+    browserRec.current?.abort?.();
     try {
       setCall(await endCall(call.call_id));
     } catch (e) {
@@ -358,11 +435,17 @@ export default function CallPanel() {
     }
   }
 
-  // Speech to text, browser first (Chrome / Edge / Safari): no Whisper, no ffmpeg needed.
-  // auto = hands-free: what you say is sent as soon as you stop talking.
-  function listen(SR: any, auto = false) {
-    if (recognition.current && recording) return;
-    setError("");
+  // Your voice: record until you stop talking (VAD), send the audio to Whisper on the server.
+  // auto = hands-free phone mode: the transcript is sent to the client as soon as it is ready.
+  function listenBrowser(auto: boolean) {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setError("This browser has no speech recognition: use Chrome or Edge, or choose 'Server (Groq)' in Listening.");
+      if (auto) setPhone(false);
+      return;
+    }
+    if (browserRec.current) return;                       // already listening
+    if (!auto) setError("");
     const rec = new SR();
     rec.lang = speechLang(language, callRef.current?.client.language).bcp47;
     rec.interimResults = true;
@@ -381,7 +464,7 @@ export default function CallPanel() {
         "not-allowed": "Microphone blocked: click the lock icon in the address bar and allow the microphone.",
         "service-not-allowed": "Speech recognition is blocked by the browser or the OS.",
         "no-speech": "",
-        "aborted": "",
+        aborted: "",
         "audio-capture": "No microphone found.",
         network: "Speech recognition needs an internet connection (the browser sends audio to its speech service).",
         "language-not-supported": "The browser does not support speech recognition for this language.",
@@ -394,104 +477,99 @@ export default function CallPanel() {
     };
     rec.onend = () => {
       setRecording(false);
-      recognition.current = null;
+      browserRec.current = null;
       const cur = callRef.current;
+      const again = () => {
+        if (phoneRef.current && callRef.current?.status === "active" && !busyRef.current)
+          setTimeout(() => phoneRef.current && listenBrowser(true), 300);
+      };
       if (!auto || !cur || cur.status !== "active") return;
-      if (fatal) {
-        setPhone(false);
-      } else if (heard.trim()) {
-        if (Date.now() < muteUntil.current) {
-          setInput(base);
-          if (phoneRef.current) setTimeout(() => phoneRef.current && listen(SR, true), 300);
-          return;
-        }
-        const h = heard.trim();
-        const lc = lastClientText.current.trim().toLowerCase();
-        if (lc && h.length >= 4 && (h.toLowerCase().includes(lc) || lc.includes(h.toLowerCase()))) {
-          setInput(base);
-          if (phoneRef.current) setTimeout(() => phoneRef.current && listen(SR, true), 300);
-          return;
-        }
-        sendMessage(h);
-      } else if (phoneRef.current) {
-        setTimeout(() => phoneRef.current && listen(SR, true), 300);
+      if (fatal) return void setPhone(false);
+      const h = heard.trim();
+      if (!h) return again();
+      const lc = lastClientText.current.trim().toLowerCase();
+      const echo = lc && h.length >= 4 && (h.toLowerCase().includes(lc) || lc.includes(h.toLowerCase()));
+      if (Date.now() < muteUntil.current || echo) {      // that was the client's own voice, not you
+        setInput(base);
+        return again();
       }
+      void sendMessage(h);
     };
     try {
       rec.start();
-      recognition.current = rec;
+      browserRec.current = rec;
       setRecording(true);
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  function toggleBrowserRecognition(SR: any) {
-    if (recording) {
-      recognition.current?.stop();
+  async function listen(auto: boolean) {
+    if (sttRef.current === "browser") return listenBrowser(auto);
+    if (listenAbort.current) return;                      // already listening
+    const stream = await getMic();
+    if (!stream) {
+      if (auto) setPhone(false);
       return;
     }
-    listen(SR, false);
+    if (!auto) setError("");                              // an automatic retry must not erase a real error
+    const abort = new AbortController();
+    const stop = new AbortController();
+    listenAbort.current = abort;
+    listenStop.current = stop;
+    setRecording(true);
+    const blob = await listenOnce(stream, abort.signal, undefined, {
+      noiseFloor: noiseRef.current,
+      stopSignal: stop.signal,
+      idleMs: auto ? 30000 : 15000,
+    });
+    listenAbort.current = null;
+    listenStop.current = null;
+    setRecording(false);
+    const cur = callRef.current;
+    const again = () => {
+      if (auto && !abort.signal.aborted && phoneRef.current && callRef.current?.status === "active" && !busyRef.current)
+        setTimeout(() => void listen(true), 200);
+    };
+    if (!blob) return again();
+    setTranscribing(true);
+    let text = "";
+    let failed = false;
+    try {
+      const { stt } = speechLang(language, cur?.client.language);
+      text = (await speechToText(blob, stt)).trim();
+    } catch (e) {
+      failed = true;
+      setError(`Speech recognition failed: ${(e as Error).message}`);
+    } finally {
+      setTranscribing(false);
+    }
+    if (failed) return;                                   // stop the loop: the error stays on screen, you can type
+    if (!text) return again();                            // silence / noise: Whisper returned nothing
+    if (auto && callRef.current?.status === "active") void sendMessage(text);
+    else setInput((prev) => (prev ? prev + " " : "") + text);
   }
 
   function togglePhone(on: boolean) {
     setPhone(on);
     phoneRef.current = on;
     if (!on) {
-      window.speechSynthesis?.cancel();
-      recognition.current?.abort?.();
+      stopClientVoice();
+      listenAbort.current?.abort();
+      browserRec.current?.abort?.();
       return;
     }
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      setError("Your browser cannot listen to you: use Chrome or Edge to talk. You can still type your answers.");
-    } else if (callRef.current?.status === "active" && !busyRef.current) {
-      setTimeout(() => listen(SR, true), 250);
-    }
+    if (callRef.current?.status === "active" && !busyRef.current) setTimeout(() => void listen(true), 250);
   }
 
-  async function toggleRecording() {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SR) return toggleBrowserRecognition(SR);
-    // fallback: record audio and send it to Whisper on the server
+  // Manual button (push to talk): first click starts, second click stops and transcribes into the box.
+  function toggleRecording() {
     if (recording) {
-      recorder.current?.stop();
+      if (browserRec.current) browserRec.current.stop();  // browser recognition: stop = deliver what it heard
+      else listenStop.current?.abort();                   // server: stop and KEEP the recording
       return;
     }
-    setError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-          suppressLocalAudioPlayback: true,
-        } as any,
-      });
-      const rec = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setRecording(false);
-        setTranscribing(true);
-        try {
-          const { stt } = speechLang(language, callRef.current?.client.language);
-          const text = await speechToText(new Blob(chunks, { type: rec.mimeType || "audio/webm" }), stt);
-          setInput((prev) => (prev ? prev + " " : "") + text);
-        } catch (e) {
-          setError((e as Error).message);
-        } finally {
-          setTranscribing(false);
-        }
-      };
-      rec.start();
-      recorder.current = rec;
-      setRecording(true);
-    } catch {
-      setError("Microphone access was denied. Allow the microphone in your browser and try again.");
-    }
+    void listen(false);
   }
 
   const active = call?.status === "active";
@@ -519,6 +597,9 @@ export default function CallPanel() {
                 </option>
               ))}
             </select>
+            {scenarios.find((x) => x.name === scenario)?.description && (
+              <span className="hint">{scenarios.find((x) => x.name === scenario)?.description}</span>
+            )}
           </label>
           <label>
             Client language
@@ -540,6 +621,22 @@ export default function CallPanel() {
               ))}
             </select>
           </label>
+          {llm !== "none" && language !== "fr" && language !== "en" && (
+            <label>
+              Darija model
+              <select value={darijaLlm} onChange={(e) => setDarijaLlm(e.target.value)}>
+                <option value="auto">Auto (ESPRIT-Derja if configured, else Gemini / Claude)</option>
+                <option value="derja">ESPRIT-Derja-Qwen3-8B (Tunisian, server)</option>
+                <option value="derja_hf">ESPRIT-Derja-Qwen3-8B (Tunisian, local)</option>
+                <option value="same">Same as client model</option>
+                <option value="gemini">Gemini 2.5 Pro</option>
+                <option value="claude">Claude</option>
+                <option value="groq">Groq</option>
+                <option value="ollama">Ollama (local)</option>
+              </select>
+              <span className="hint">Writes only the Tunisian Darija lines.</span>
+            </label>
+          )}
           {llm !== "auto" && llm !== "none" && (
             <label>
               Model
@@ -581,6 +678,23 @@ export default function CallPanel() {
             <input type="checkbox" checked={phone} onChange={(e) => togglePhone(e.target.checked)} />
             Phone call mode: the client talks, then your microphone opens by itself
           </label>
+          <label>
+            Listening (your voice)
+            <select value={sttEngine} onChange={(e) => setSttEngine(e.target.value as "browser" | "server")}>
+              <option value="browser">Browser (Chrome / Edge, no key needed)</option>
+              <option value="server">Server: Groq Whisper (needs GROQ_API_KEY)</option>
+            </select>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={bargeIn} onChange={(e) => setBargeIn(e.target.checked)} />
+            I wear headphones: let me interrupt the client by talking
+          </label>
+          {audioSt && (
+            <p className="hint">
+              Voice: listening = {sttEngine === "browser" ? "browser (Chrome / Edge)" : audioSt.stt}, client voice ={" "}
+              {audioSt.tts}
+            </p>
+          )}
         </section>
 
         {call && (
@@ -633,6 +747,13 @@ export default function CallPanel() {
                 Client engine: {call.engine.backend}
                 {call.engine.model ? ` (${call.engine.model})` : ""} · {call.engine.llm_turns} LLM turns,{" "}
                 {call.engine.rule_turns} rule-based
+                {call.engine.darija_backend && (
+                  <>
+                    {" "}· Darija: {call.engine.darija_backend}
+                    {call.engine.darija_model ? ` (${call.engine.darija_model})` : ""}
+                    {call.engine.darija_retries ? `, ${call.engine.darija_retries} retried` : ""}
+                  </>
+                )}
                 {(call.engine.last_error || call.engine.warning) && (
                   <span style={{ color: "#b3261e" }}>
                     {" "}
@@ -688,7 +809,7 @@ export default function CallPanel() {
                     disabled={busy || transcribing}
                     aria-pressed={recording}
                   >
-                    {recording ? "Stop recording" : transcribing ? "Transcribing…" : "Record"}
+                    {recording ? "Stop" : transcribing ? "Transcribing…" : "Record"}
                   </button>
                   <button className="ghost" onClick={onEnd} disabled={busy}>
                     End call
@@ -718,6 +839,7 @@ export default function CallPanel() {
                         : "Genuine client."}
                     </dd>
                   </dl>
+                  {call.scorecard && <ScorecardView sc={call.scorecard} />}
                 </div>
               )
             )}

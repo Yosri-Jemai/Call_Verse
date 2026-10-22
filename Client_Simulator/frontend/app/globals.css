@@ -168,3 +168,31 @@ td.win { background: var(--accent-soft); font-weight: 650; }
 @media (prefers-reduced-motion: reduce) {
   .mood-needle { transition: none; }
 }
+
+/* ---- QA scorecard ---- */
+.scorecard { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+.scorecard h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
+.sc-head { display: flex; align-items: center; gap: 14px; }
+.sc-grade { width: 56px; height: 56px; border-radius: 12px; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: #fff; background: var(--muted); }
+.sc-grade.g-A { background: var(--good); } .sc-grade.g-B { background: #5a9a3b; }
+.sc-grade.g-C { background: var(--warn); } .sc-grade.g-D { background: var(--bad); }
+.sc-total { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.sc-critical, .sc-warn { margin: 12px 0 0; padding: 10px 12px 10px 14px; list-style: none; border-radius: 8px; font-size: 14px; }
+.sc-critical { background: #fdecea; color: var(--bad); border: 1px solid #f3c2bd; }
+.sc-warn { background: #fff4e0; color: #8a5300; border: 1px solid #f1d9a8; }
+.sc-bars { display: grid; gap: 8px; }
+.sc-row { display: grid; grid-template-columns: 170px 1fr 36px; gap: 4px 10px; align-items: center; }
+.sc-label small { color: var(--muted); }
+.sc-bar { height: 8px; background: #e6ebf1; border-radius: 4px; overflow: hidden; }
+.sc-fill { display: block; height: 100%; border-radius: 4px; }
+.sc-fill.ok { background: var(--good); } .sc-fill.mid { background: var(--warn); } .sc-fill.ko { background: var(--bad); } .sc-fill.na { background: transparent; }
+.sc-val { text-align: right; font-weight: 600; }
+.sc-ev { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); margin-top: -2px; }
+.sc-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.sc-check .done { color: var(--good); } .sc-check .todo { color: var(--bad); }
+.sc-turns { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: 14px; }
+.sc-adv { color: var(--ink); }
+.sc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #e6ebf1; color: var(--muted); }
+.tag.good { background: #e0f1e6; color: var(--good); } .tag.bad { background: #fdecea; color: var(--bad); }
+@media (max-width: 640px) { .sc-row { grid-template-columns: 1fr 36px; } .sc-bar { grid-column: 1 / -1; } }

@@ -110,3 +110,5 @@ yarl==1.25.1
 zstandard==0.25.0
 sentence-transformers
 chromadb
+edge-tts>=7.2
+langdetect>=1.0.9

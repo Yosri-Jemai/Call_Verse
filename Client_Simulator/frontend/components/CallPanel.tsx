@@ -789,8 +789,9 @@ export default function CallPanel() {
 
             {call.moderation?.client_swore_last && call.status === "active" && (
               <div className="mod-warn tip" role="status">
-                💡 The client lost their temper. Procedure: stay calm, acknowledge their frustration, politely ask them to
-                stay respectful, then move to a solution. If it continues, warn that the call may end or escalate to a manager.
+                💡 The client lost their temper (outburst {call.moderation.client_swears}/3). Procedure: stay calm, acknowledge
+                their frustration, politely warn them to stay respectful (warning {Math.min((call.moderation.client_warnings ?? 0) + 1, 2)}/2),
+                then move to a solution. After 2 warnings, the next outburst closes the call.
               </div>
             )}
             {call.moderation?.last && (
@@ -799,9 +800,11 @@ export default function CallPanel() {
                   ? "⛔ The client hung up because of your offensive language (they had warned you). This is recorded as a critical failure in your QA score."
                   : `⚠ Offensive language detected (${call.moderation.last.level_name}${
                       call.moderation.last.words.length ? `: ${call.moderation.last.words.join(", ")}` : ""
-                    }). This is a warning: ${
+                    })${
+                      call.moderation.warnings_max != null ? `. Warning ${Math.min(call.moderation.count, call.moderation.warnings_max)}/${call.moderation.warnings_max}` : ""
+                    }: ${
                       call.moderation.strikes_left === 1
-                        ? "if you do it again, the client hangs up."
+                        ? "this was the last one, if you do it again the client hangs up."
                         : "stay professional, it is recorded in your QA score."
                     }`}
               </div>
@@ -842,7 +845,7 @@ export default function CallPanel() {
             ) : (
               s && (
                 <div className="outcome">
-                  <h2>{STATUS_LABEL[call.status] ?? call.status}</h2>
+                  <h2>{call.moderation?.client_abuse_ended ? "Call closed: the client kept swearing after 2 warnings" : (STATUS_LABEL[call.status] ?? call.status)}</h2>
                   <dl className="facts wide">
                     <dt>Satisfaction</dt>
                     <dd className="num">{s.satisfaction} / 5</dd>

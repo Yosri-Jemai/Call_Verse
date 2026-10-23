@@ -177,6 +177,9 @@ def score_call(st) -> dict:
         comp -= 15
         warnings.append(_crit("Did not politely ask the client to stay respectful after their bad language", ignored))
     swears = [e["turn"] for e in log if e.get("client_swore")]
+    if getattr(st, "ended_by_client_abuse", False) and st.client_warnings < 2:
+        warnings.append(f"The call was closed after the client's 3rd outburst, but the client was warned only "
+                        f"{st.client_warnings} time(s) (2 warnings expected)")
     if len(swears) >= 2 and not any(e["flags"].get("fin_appel_annonce") or e["flags"].get("escalade")
                                     for e in log if e["turn"] > swears[0]):
         warnings.append("Repeated bad language from the client: no warning that the call may end and no escalation")
@@ -243,6 +246,8 @@ def score_call(st) -> dict:
 def _checklist(st, log, needs_verif, verified_first, act_turn) -> list[dict]:
     items = _checklist_core(st, log, needs_verif, verified_first, act_turn)
     items.append(dict(step="Professional language (no insults or swearing)", done=not _any(log, "grossier")))
+    if getattr(st, "ended_by_client_abuse", False):
+        items.append(dict(step="Warned the client twice before the call was closed", done=st.client_warnings >= 2))
     handled = _swear_handling(log)
     if handled:                                          # the client lost their temper: was the procedure followed?
         items.append(dict(step="Stayed calm and empathic after the client's bad language",

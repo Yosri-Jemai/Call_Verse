@@ -158,7 +158,10 @@ def moderation_view(st: ConversationState, strikes: int = 2) -> dict:
     last = st.turn_log[-1]["flags"] if st.turn_log else {}
     lvl = last.get("grossier_niveau", 0)
     return {"count": st.profanity_count, "points": st.profanity_points, "ended": st.ended_by_profanity,
-            "strikes_left": max(0, strikes - st.profanity_count), "client_swears": st.client_swears,
+            "strikes_left": max(0, strikes - st.profanity_count), "warnings_max": (strikes - 1) if strikes < 99 else None,   # None: the call is never ended for bad words
+           
+            "client_swears": st.client_swears, "client_warnings": st.client_warnings,
+            "client_abuse_ended": st.ended_by_client_abuse,
             "client_swore_last": bool(st.turn_log and st.turn_log[-1].get("client_swore")),
             "last": ({"level": lvl, "level_name": LEVEL_NAME[lvl], "words": last.get("grossier_mots", []),
                       "categories": last.get("grossier_categories", [])} if lvl else None)}
@@ -236,7 +239,8 @@ class StartCall(BaseModel):
     profanity_hangup: bool = True  # the client warns at the first offence, hangs up at the `profanity_strikes`-th
     profanity_strikes: int = Field(2, ge=1, le=5)
     client_swears: bool = True     # the angry client swears: lets you check the advisor's de-escalation
-    client_swear_turn: Optional[int] = Field(None, ge=1)  # force the first outburst at this advisor turn
+    client_swear_turn: Optional[int] = Field(None, ge=1)  # abusive client: swears from this advisor turn on
+    client_swear_strikes: int = Field(3, ge=1, le=5)      # the client's N-th outburst ends the call
     toxicity_model: str = "none"   # ML bad-words model on top of the word list: none | auto | <Hugging Face model name>
 
 
@@ -260,6 +264,7 @@ def start_call(body: StartCall):
                                difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm,
                                profanity_hangup=body.profanity_hangup, profanity_strikes=body.profanity_strikes,
                                client_swears=body.client_swears, client_swear_turn=body.client_swear_turn,
+                               client_swear_strikes=body.client_swear_strikes,
                                toxicity_model=make_toxicity_model(body.toxicity_model))
     requests = sim.generate_requests(body.scenario, 10)
     if not requests:

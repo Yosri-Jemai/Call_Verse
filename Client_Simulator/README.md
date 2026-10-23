@@ -238,12 +238,12 @@ judge (`rule_analyse`), so it works with or without an LLM judge, and an LLM jud
 | 2 | vulgar / insulting | `c*****d`, `m***e`, `sh*t` | mood -0.20 (plus -0.25 rude); scorecard **critical failure** (total capped at 40) |
 | 3 | severe: sexual / family insults, threats | `f**k`, `p**e`, `je vais vous tuer` | mood -0.30 (plus -0.25 rude); critical failure |
 
-* **Warning first, then the call ends.** At the first offence (any level) the client gives a clear, firm warning
-  (rule bank `banks.OFFENDED`, or an explicit instruction in the LLM prompt: « watch your language, if you do it again I hang up »).
-  At the second offence the client says so and **hangs up** (`banks.HUNG_UP_INSULT`); the scorecard then records a critical failure
-  ("the client hung up because of the advisor's bad language"). `ClientSimulatorAgent(profanity_strikes=1)` hangs up at once,
-  `profanity_strikes=3` allows two warnings (API: `profanity_strikes` in `POST /api/calls`). `profanity_hangup=False` (API:
-  `profanity_hangup: false`) only detects and scores, without ever ending the call.
+* **Two warnings, then the call ends.** Offence 1 and offence 2 (any level) each get a firm warning from the client
+  (« first warning », then « last warning »: rule bank `banks.OFFENDED`, or a numbered instruction in the LLM prompt).
+  At the 3rd offence the client says so and **hangs up** (`banks.HUNG_UP_INSULT`); the scorecard records a critical failure
+  ("the client hung up because of the advisor's bad language"). `ClientSimulatorAgent(profanity_strikes=2)` gives one warning,
+  `profanity_strikes=1` hangs up at once (API: `profanity_strikes` in `POST /api/calls`). `profanity_hangup=False` only detects
+  and scores, without ever ending the call.
 * Whole-word matching (no "Scunthorpe problem"), robust to accents, upper case, leet speak (`c0nnard`), stretched letters
   (`fuuuck`), masked letters (`f*ck`) and spaced letters (`f u c k`). The bad words are always stored and shown **masked**.
 * Only the advisor is checked: the simulated client may be angry or rude by design.
@@ -260,23 +260,30 @@ judge (`rule_analyse`), so it works with or without an LLM judge, and an LLM jud
 * The word list alone cannot understand context or sarcasm and will miss words that are not on the list: extend it
   with the extra file as you meet new cases.
 
-#### The angry client swears, the advisor must de-escalate
-An honest client who is really angry loses patience and swears (at the situation or the bank: no threat, no slur). It
-happens when the mood is at or below `CLIENT_SWEAR_MOOD` (-0.55) from turn 2, at most twice per call, never for a fraudster.
-To test an advisor on purpose, force it: `ClientSimulatorAgent(client_swear_turn=3)` (API: `client_swear_turn: 3` in
-`POST /api/calls`). Turn it off with `client_swears=False`. The LLM client gets an instruction to swear in that reply, and
-the rule-based client uses `banks.ANGRY_SWEAR`; it only counts if the detector really finds a bad word in the reply.
+#### The client swears too: two warnings, then the call is closed
+An honest client who is really angry loses patience and swears (at the situation or the bank: no threat, no slur). It happens
+when the mood is at or below `CLIENT_SWEAR_MOOD` (-0.55) from turn 2, never for a fraudster, with a pause of 2 turns between two
+outbursts (1 turn when the advisor ignored the last one). The rule is the same as for the advisor:
+**outburst 1 and 2 = the advisor must warn the client; the 3rd outburst closes the call** (status `closed`,
+`ended_by_client_abuse`; the UI says "Call closed: the client kept swearing after 2 warnings").
 
-What the advisor is expected to do (checked by the judge flags `rappel_respect` / `fin_appel_annonce`, and the scorecard):
+To test an advisor on purpose, make the client abusive: `ClientSimulatorAgent(client_swear_turn=3)` (API: `client_swear_turn: 3`
+in `POST /api/calls`) makes it swear from turn 3 on, whatever the mood. `client_swear_strikes` changes the number of outbursts that
+end the call (default 3), and `client_swears=False` turns it all off. The LLM client gets an instruction to swear in that
+reply, and the rule-based client uses `banks.ANGRY_SWEAR` (4 lines per language, never the same twice); an outburst only counts if
+the detector really finds a bad word in the reply.
+
+What the advisor is expected to do (judge flags `rappel_respect` / `fin_appel_annonce`, then the scorecard):
 1. stay calm: no bad words back (otherwise the usual critical failure);
 2. acknowledge the frustration / apologise (`empathie`);
-3. politely ask the client to stay respectful, or escalate to a manager (`rappel_respect` / `escalade`);
-4. after a second outburst, warn that the call may end or escalate (`fin_appel_annonce`).
+3. warn the client politely to stay respectful, or escalate to a manager (`rappel_respect` / `escalade`), after each outburst;
+4. when the call is closed after the 3rd outburst, it should have given two warnings.
 
-Effects: good handling (empathy + reminder or escalation) gives the client +0.12 mood and closes the outburst; ignoring it
-leaves it open (the cooldown drops to 1 turn). The scorecard adds two checklist items, a compliance penalty of 15 and a warning
-when the reminder is missing, and a warning when a second outburst got no warning or escalation. The UI shows the procedure
-as a tip under the transcript after an outburst. The advisor's own prompt (`Customer_Advisor`) is not changed by this.
+Effects: good handling (empathy + reminder or escalation) gives the client +0.12 mood and closes that outburst; ignoring it
+leaves it open. The scorecard adds checklist items ("Stayed calm and empathic", "Politely reminded the client...", "Warned the
+client twice before the call was closed"), a compliance penalty of 15 and a warning when the reminder is missing, and a
+warning when the call was closed after fewer than 2 warnings. The UI shows the procedure as a tip under the transcript after an
+outburst. The advisor's own prompt (`Customer_Advisor`) is not changed by this.
 
 ### 3. Compliance-trap scenarios (pick them in the Scenario menu)
 | Scenario | The caller | The advisor must |

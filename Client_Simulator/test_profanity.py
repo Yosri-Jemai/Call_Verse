@@ -95,26 +95,29 @@ def test_bad_language_hurts_mood_and_is_counted():
     assert rude.mood < clean.mood - 0.3
 
 
-def test_first_offence_is_a_warning_second_offence_ends_the_call():
-    st = _call(["Bonjour, je vous écoute.", "Ne soyez pas stupide."])
+def test_two_warnings_then_the_call_ends():
+    msgs = ["Bonjour, je vous écoute.", "Ne soyez pas stupide.", "Vous êtes vraiment stupide.", "Encore stupide."]
+    st = _call(msgs[:2])                                           # 1st offence: warning 1/2
     assert st.status == "active" and st.profanity_count == 1 and not st.ended_by_profanity
-    warned = st.history[-1][1].lower()                      # the client says it is a warning, in any of the 3 languages
-    assert any(w in warned for w in ("avertissement", "warning", "recommencez", "do it again", "3awadtha", "n7addrek", "encore une insulte"))
-    st = _call(["Bonjour, je vous écoute.", "Ne soyez pas stupide.", "Vous êtes vraiment stupide."])
-    assert st.status == "hung_up" and st.ended_by_profanity and st.profanity_count == 2
+    assert any(w in st.history[-1][1].lower() for w in ("premier avertissement", "first warning", "awel avertissement"))
+    st = _call(msgs[:3])                                           # 2nd offence: the LAST warning
+    assert st.status == "active" and st.profanity_count == 2
+    assert any(w in st.history[-1][1].lower() for w in ("dernier avertissement", "last warning", "akhir"))
+    st = _call(msgs)                                               # 3rd offence: the call is over
+    assert st.status == "hung_up" and st.ended_by_profanity and st.profanity_count == 3
 
 
-def test_a_severe_insult_is_also_only_a_warning_the_first_time_and_strikes_is_configurable():
+def test_a_severe_insult_is_a_warning_too_and_strikes_is_configurable():
     msgs = ["Bonjour, je vous écoute.", "Fils de pute, répondez."]
     assert _call(msgs).status == "active"
     assert _call(msgs, profanity_strikes=1).status == "hung_up"          # strict mode: hang up at once
-    assert _call(msgs + ["Encore un connard."], profanity_strikes=3).status == "active"
+    assert _call(msgs + ["Quel connard."], profanity_strikes=3).status == "active"
     st = _call(msgs + ["Encore un connard."], profanity_hangup=False)      # detection only: the rule never ends the call
     assert st.status == "active" and st.profanity_count == 2 and not st.ended_by_profanity
 
 
 def test_the_hang_up_line_blames_the_language():
-    st = _call(["Bonjour.", "Ne soyez pas stupide.", "Vous êtes stupide."])
+    st = _call(["Bonjour.", "Ne soyez pas stupide.", "Vous êtes stupide.", "Encore stupide."])
     assert st.ended_by_profanity
     last = st.history[-1][1].lower()
     assert any(w in last for w in ("prévenu", "warned", "9olt lik", "langage", "language", "kalam"))
@@ -216,9 +219,9 @@ def _angry_call(msgs, **kw):
     return st
 
 
-def test_client_swears_at_the_forced_turn():
+def test_abusive_client_swears_from_the_forced_turn():
     st = _angry_call(["Bonjour.", "Un instant.", "Je vérifie."], client_swear_turn=2)
-    assert st.client_swears == 1 and st.swear_pending
+    assert st.client_swears == 2 and st.swear_pending          # turn 2, and again at turn 3 because the advisor ignored it
     assert "client_swore" not in st.turn_log[0] and st.turn_log[1]["client_swore"]["level"] >= 1
     assert "khra" not in json.dumps(st.turn_log[1]["client_swore"]) or "k**a" in json.dumps(st.turn_log[1]["client_swore"])
     assert scan(st.history[-3][1])["found"] or scan(st.history[-2][1])["found"]
@@ -234,7 +237,7 @@ def test_client_does_not_swear_when_disabled_or_when_fraudster():
     assert st.client_swears == 0
 
 
-def test_client_swears_when_the_mood_is_very_low_and_at_most_twice():
+def test_client_swears_when_the_mood_is_very_low_and_at_most_three_times():
     sim = ClientSimulatorAgent(seed=3)
     req = next(r for r in sim.generate_requests("panne", 60) if r.profile == Profile.DISSATISFIED and not r.is_fraudster)
     req.initial_mood = -0.6                      # angry enough to swear, not so low that the client hangs up at once
@@ -243,7 +246,7 @@ def test_client_swears_when_the_mood_is_very_low_and_at_most_twice():
         sim.reply(st, m)
         if st.status != "active":
             break
-    assert 1 <= st.client_swears <= 2
+    assert 1 <= st.client_swears <= 3
 
 
 def test_respect_and_end_of_call_flags():
@@ -277,19 +280,45 @@ def test_ignoring_the_outburst_is_a_warning_and_a_failed_checklist_item():
     assert sc["per_turn"][1]["client_bad_words"]
 
 
-def test_a_second_outburst_without_warning_or_escalation_is_flagged():
+def test_repeated_outbursts_without_any_warning_are_flagged():
     sim = ClientSimulatorAgent(seed=3)
     req = next(r for r in sim.generate_requests("panne", 60) if r.profile == Profile.DISSATISFIED and not r.is_fraudster)
-    req.initial_mood = -0.6                      # an unhelpful advisor keeps the client angry: a second outburst follows
+    req.initial_mood = -0.6                      # an unhelpful advisor keeps the client angry: outbursts follow one another
     st = sim.start(req)
     for m in ["Voyons.", "Hmm.", "Je regarde.", "Euh.", "Voilà.", "Ok.", "Bon."]:
         sim.reply(st, m)
         if st.status != "active":
             break
-    assert st.client_swears == 2
-    assert any("Repeated bad language" in w for w in score_call(st)["warnings"])
+    assert st.client_swears == 3 and st.status == "closed" and st.client_warnings == 0
+    warnings = score_call(st)["warnings"]
+    assert any("Repeated bad language" in w for w in warnings) and any("warned only 0" in w for w in warnings)
 
 
 def test_every_rule_bank_swear_line_is_caught_by_the_detector():
     for lang, lines in banks.ANGRY_SWEAR.items():
         assert all(scan(line)["found"] for line in lines), lang
+
+
+# ------------------------------------------------------------------ two warnings to the client, then the call is closed
+def test_the_call_is_closed_after_the_client_swore_a_third_time_having_been_warned_twice():
+    msgs = ["Un instant.", HANDLED, "Je vérifie.", "Je vérifie encore.", HANDLED, "Je continue.", "Je regarde.", "Voilà."]
+    st = _angry_call(msgs, client_swear_turn=1)
+    assert st.status == "closed" and st.ended_by_client_abuse
+    assert st.client_swears == 3 and st.client_warnings == 2
+    sc = score_call(st)
+    assert {c["step"]: c["done"] for c in sc["checklist"]}["Warned the client twice before the call was closed"]
+    assert not any("warned only" in w for w in sc["warnings"])
+
+
+def test_the_call_is_also_closed_when_the_advisor_never_warned_but_the_scorecard_says_so():
+    st = _angry_call(["Un instant.", "Voyons.", "Hmm.", "Ok.", "Bon."], client_swear_turn=1)
+    assert st.status == "closed" and st.ended_by_client_abuse and st.client_warnings == 0
+    sc = score_call(st)
+    assert not {c["step"]: c["done"] for c in sc["checklist"]}["Warned the client twice before the call was closed"]
+    assert any("warned only 0 time(s)" in w for w in sc["warnings"])
+    assert ClientSimulatorAgent.summary(st)["ended_by_client_abuse"] is True
+
+
+def test_client_swear_strikes_is_configurable():
+    st = _angry_call(["Un instant.", "Voyons."], client_swear_turn=1, client_swear_strikes=1)
+    assert st.status == "closed" and st.client_swears == 1

@@ -32,6 +32,9 @@ export type Moderation = {
   points: number; // sum of their levels (1 mild, 2 vulgar, 3 severe)
   ended?: boolean; // the client hung up because of the advisor's bad language
   strikes_left?: number; // offences left before the client hangs up
+  warnings_max?: number | null; // warnings the advisor gets before the call ends (2); null = the call is never ended
+  client_warnings?: number; // reminders of respect the advisor gave to the client
+  client_abuse_ended?: boolean; // the call was closed after the client's 3rd outburst
   client_swears?: number; // times the CLIENT lost patience and swore
   client_swore_last?: boolean; // the client's last reply contained bad words
   last: { level: number; level_name: string; words: string[]; categories: string[] } | null; // last message only

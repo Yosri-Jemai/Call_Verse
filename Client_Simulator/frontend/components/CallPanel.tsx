@@ -787,12 +787,23 @@ export default function CallPanel() {
               {pending && <div className="typing">{call.client.name} is answering…</div>}
             </div>
 
+            {call.moderation?.client_swore_last && call.status === "active" && (
+              <div className="mod-warn tip" role="status">
+                💡 The client lost their temper. Procedure: stay calm, acknowledge their frustration, politely ask them to
+                stay respectful, then move to a solution. If it continues, warn that the call may end or escalate to a manager.
+              </div>
+            )}
             {call.moderation?.last && (
               <div className={`mod-warn lvl-${call.moderation.last.level}`} role="alert">
-                ⚠ Offensive language detected ({call.moderation.last.level_name}
-                {call.moderation.last.words.length ? `: ${call.moderation.last.words.join(", ")}` : ""}). Stay
-                professional: this is recorded in your QA score
-                {call.status === "active" && call.moderation.points >= 3 ? " and the client may hang up" : ""}.
+                {call.moderation.ended
+                  ? "⛔ The client hung up because of your offensive language (they had warned you). This is recorded as a critical failure in your QA score."
+                  : `⚠ Offensive language detected (${call.moderation.last.level_name}${
+                      call.moderation.last.words.length ? `: ${call.moderation.last.words.join(", ")}` : ""
+                    }). This is a warning: ${
+                      call.moderation.strikes_left === 1
+                        ? "if you do it again, the client hangs up."
+                        : "stay professional, it is recorded in your QA score."
+                    }`}
               </div>
             )}
 

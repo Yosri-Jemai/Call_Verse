@@ -95,15 +95,29 @@ def test_bad_language_hurts_mood_and_is_counted():
     assert rude.mood < clean.mood - 0.3
 
 
-def test_severe_insult_makes_the_client_hang_up_unless_disabled():
+def test_first_offence_is_a_warning_second_offence_ends_the_call():
+    st = _call(["Bonjour, je vous écoute.", "Ne soyez pas stupide."])
+    assert st.status == "active" and st.profanity_count == 1 and not st.ended_by_profanity
+    warned = st.history[-1][1].lower()                      # the client says it is a warning, in any of the 3 languages
+    assert any(w in warned for w in ("avertissement", "warning", "recommencez", "do it again", "3awadtha", "n7addrek", "encore une insulte"))
+    st = _call(["Bonjour, je vous écoute.", "Ne soyez pas stupide.", "Vous êtes vraiment stupide."])
+    assert st.status == "hung_up" and st.ended_by_profanity and st.profanity_count == 2
+
+
+def test_a_severe_insult_is_also_only_a_warning_the_first_time_and_strikes_is_configurable():
     msgs = ["Bonjour, je vous écoute.", "Fils de pute, répondez."]
-    assert _call(msgs).status == "hung_up"
-    assert _call(msgs, profanity_hangup=False).status == "active"
+    assert _call(msgs).status == "active"
+    assert _call(msgs, profanity_strikes=1).status == "hung_up"          # strict mode: hang up at once
+    assert _call(msgs + ["Encore un connard."], profanity_strikes=3).status == "active"
+    st = _call(msgs + ["Encore un connard."], profanity_hangup=False)      # detection only: the rule never ends the call
+    assert st.status == "active" and st.profanity_count == 2 and not st.ended_by_profanity
 
 
-def test_repeated_vulgar_language_ends_the_call():
-    st = _call(["Quel connard.", "Encore ce merdier de merde.", "Quel con vous faites."])
-    assert st.status == "hung_up" and st.profanity_points >= 5
+def test_the_hang_up_line_blames_the_language():
+    st = _call(["Bonjour.", "Ne soyez pas stupide.", "Vous êtes stupide."])
+    assert st.ended_by_profanity
+    last = st.history[-1][1].lower()
+    assert any(w in last for w in ("prévenu", "warned", "9olt lik", "langage", "language", "kalam"))
 
 
 def test_summary_and_scorecard_report_bad_language():
@@ -183,3 +197,99 @@ def test_model_in_a_call_and_loader_errors():
         pass                                    # transformers missing or model unknown: a clear error, not a crash
     else:
         raise AssertionError("expected ToxicityModelError")
+
+
+# ------------------------------------------------------------------ the CLIENT loses patience and swears
+import banks
+from judge import respect_flags
+
+HANDLED = "Je comprends votre frustration et je suis désolé. Je vous demande de rester respectueux, et je m'occupe de votre demande."
+
+
+def _angry_call(msgs, **kw):
+    sim = ClientSimulatorAgent(seed=5, **kw)
+    st = sim.start(_request())
+    for m in msgs:
+        sim.reply(st, m)
+        if st.status != "active":
+            break
+    return st
+
+
+def test_client_swears_at_the_forced_turn():
+    st = _angry_call(["Bonjour.", "Un instant.", "Je vérifie."], client_swear_turn=2)
+    assert st.client_swears == 1 and st.swear_pending
+    assert "client_swore" not in st.turn_log[0] and st.turn_log[1]["client_swore"]["level"] >= 1
+    assert "khra" not in json.dumps(st.turn_log[1]["client_swore"]) or "k**a" in json.dumps(st.turn_log[1]["client_swore"])
+    assert scan(st.history[-3][1])["found"] or scan(st.history[-2][1])["found"]
+
+
+def test_client_does_not_swear_when_disabled_or_when_fraudster():
+    assert _angry_call(["Bonjour.", "Un instant.", "Ok."], client_swear_turn=2, client_swears=False).client_swears == 0
+    sim = ClientSimulatorAgent(seed=0, client_swear_turn=1)
+    fraud = next(r for r in sim.generate_requests("panne", 60) if r.is_fraudster)
+    st = sim.start(fraud)
+    for m in ["Bonjour.", "Un instant.", "Je vérifie."]:
+        sim.reply(st, m)
+    assert st.client_swears == 0
+
+
+def test_client_swears_when_the_mood_is_very_low_and_at_most_twice():
+    sim = ClientSimulatorAgent(seed=3)
+    req = next(r for r in sim.generate_requests("panne", 60) if r.profile == Profile.DISSATISFIED and not r.is_fraudster)
+    req.initial_mood = -0.6                      # angry enough to swear, not so low that the client hangs up at once
+    st = sim.start(req)
+    for m in ["Voyons.", "Hmm.", "Je regarde.", "Euh.", "Voilà.", "Ok.", "Bon."]:
+        sim.reply(st, m)
+        if st.status != "active":
+            break
+    assert 1 <= st.client_swears <= 2
+
+
+def test_respect_and_end_of_call_flags():
+    for ok in ["Restons courtois, s'il vous plaît.", "Merci de rester respectueux.", "Je vous demande de garder un ton respectueux.",
+               "Pouvez-vous surveiller votre langage ?", "Please stay respectful.", "Watch your language, please.",
+               "Ne m'insultez pas, je veux vous aider."]:
+        assert respect_flags(ok)["rappel_respect"], ok
+    for no in ["Merci de rester en ligne.", "Je vous écoute.", "Votre carte est bloquée."]:
+        assert not respect_flags(no)["rappel_respect"], no
+    assert respect_flags("Sinon je serai obligé de mettre fin à l'appel.")["fin_appel_annonce"]
+    assert respect_flags("Otherwise I will have to end the call.")["fin_appel_annonce"]
+    assert not respect_flags("Avant de terminer l'appel, puis-je faire autre chose ?")["fin_appel_annonce"]
+
+
+def test_good_deescalation_calms_the_client_and_passes_the_checklist():
+    st = _angry_call(["Bonjour.", "Un instant.", HANDLED, "Je traite ça."], client_swear_turn=2)
+    assert st.client_swears == 1 and not st.swear_pending
+    sc = score_call(st)
+    steps = {c["step"]: c["done"] for c in sc["checklist"]}
+    assert steps["Stayed calm and empathic after the client's bad language"]
+    assert steps["Politely reminded the client to stay respectful (or escalated)"]
+    assert not any("respectful" in w for w in sc["warnings"])
+
+
+def test_ignoring_the_outburst_is_a_warning_and_a_failed_checklist_item():
+    st = _angry_call(["Bonjour.", "Un instant.", "Voyons voir.", "Ok."], client_swear_turn=2)
+    sc = score_call(st)
+    steps = {c["step"]: c["done"] for c in sc["checklist"]}
+    assert not steps["Politely reminded the client to stay respectful (or escalated)"]
+    assert any("stay respectful" in w for w in sc["warnings"])
+    assert sc["per_turn"][1]["client_bad_words"]
+
+
+def test_a_second_outburst_without_warning_or_escalation_is_flagged():
+    sim = ClientSimulatorAgent(seed=3)
+    req = next(r for r in sim.generate_requests("panne", 60) if r.profile == Profile.DISSATISFIED and not r.is_fraudster)
+    req.initial_mood = -0.6                      # an unhelpful advisor keeps the client angry: a second outburst follows
+    st = sim.start(req)
+    for m in ["Voyons.", "Hmm.", "Je regarde.", "Euh.", "Voilà.", "Ok.", "Bon."]:
+        sim.reply(st, m)
+        if st.status != "active":
+            break
+    assert st.client_swears == 2
+    assert any("Repeated bad language" in w for w in score_call(st)["warnings"])
+
+
+def test_every_rule_bank_swear_line_is_caught_by_the_detector():
+    for lang, lines in banks.ANGRY_SWEAR.items():
+        assert all(scan(line)["found"] for line in lines), lang

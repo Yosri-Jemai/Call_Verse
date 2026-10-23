@@ -12,6 +12,7 @@ Output keys (old ones kept for compatibility):
   resolution, promesse, empathie, identite, identity_fields, identite_generique, demande_sensible,
   escalade, attente, incertitude, refus, source, tone, contient_chiffre, trop_court, judge,
   grossier (bad words), grossier_niveau (0-3), grossier_nb, grossier_mots (masked), grossier_categories,
+  rappel_respect (asks the client to stay respectful), fin_appel_annonce (warns the call may end),
   toxicite_modele (score 0-1 of the optional ML model, absent without a model)
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ import re
 from typing import Callable, Optional
 
 from llm_backends import extract_json
-from profanity import scan as scan_profanity
+from profanity import _norm as _norm_text, scan as scan_profanity
 
 # --------------------------------------------------------------------------
 # Phrase lists (matched on whole words, accents kept)
@@ -225,6 +226,29 @@ def profanity_flags(msg: str) -> dict:
             "grossier_mots": r["words"], "grossier_categories": r["categories"]}
 
 
+_ADJ = r"(poli|polie|polis|courtois\w*|respectueu\w*|cordial\w*|civil\w*)"
+RESPECT_RE = re.compile("|".join([
+    rf"\b(rester|restons|restez|reste|garder|gardons|gardez|garde|demeurer)\s+(un\s+|le\s+)?(ton\s+|dialogue\s+|langage\s+)?{_ADJ}",
+    r"(surveill\w+|moder\w+)\s+(votre|ton)\s+(langage|vocabulaire|ton)",
+    r"respect\s+(mutuel|reciproque)|dans le respect|manque de respect|propos\s+(injurieux|irrespectueux|insultants)",
+    r"(ne\s+)?(m'|nous\s+)?(insult|injuri)\w+",
+    r"(stay|remain|keep|be)\s+(calm\s+and\s+)?(respectful|polite|civil|courteous)|respectful\s+(language|tone|manner)",
+    r"(watch|mind)\s+your\s+language|abusive\s+language|inappropriate\s+language",
+    r"e7tiram|7tiram|ihtiram|mou2adab"]))
+ENDCALL_RE = re.compile("|".join([
+    r"(je serai|je serais|je devrai|je devrais|nous serons|sinon|si (cela|ca|vous) (continue|persiste|poursuivez))"
+    r".{0,60}(mettre fin|terminer|raccrocher|couper|clore|interrompre)",
+    r"(i will|i'll|i would|i may|i might|we will|we'll|otherwise|if this continues).{0,60}(end|terminate|disconnect)\s+(the\s+)?(call|conversation)",
+    r"nsakker|nsakkarha|nwa9ef el mokalma"]))
+
+
+def respect_flags(msg: str) -> dict:
+    """How the advisor answers a client who loses their temper: polite reminder to stay respectful, and the
+    warning that the call may be ended (the usual de-escalation procedure)."""
+    t = _norm_text(msg)
+    return {"rappel_respect": bool(RESPECT_RE.search(t)), "fin_appel_annonce": bool(ENDCALL_RE.search(t))}
+
+
 def rule_analyse(msg: str) -> dict:
     sents = _sentences(msg)
     allsents = [_tokens(msg)]                              # questions kept: "votre date de naissance ?" asks for it
@@ -246,6 +270,7 @@ def rule_analyse(msg: str) -> dict:
     f["tone"] = "rude" if rude else "polite" if (polite or f["empathie"]) else "cold" if f["trop_court"] else "neutral"
     f.update(extra_flags(msg))
     f.update(profanity_flags(msg))
+    f.update(respect_flags(msg))
     if f["grossier"]:
         f["tone"] = "rude"                                 # swearing is never "polite" or "neutral"
     f["judge"] = "rules"

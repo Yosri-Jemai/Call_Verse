@@ -142,7 +142,7 @@ def view(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> dict
         "history": [{"role": role, "text": text} for role, text in st.history],
         "summary": None,
         # bad-words detection on the advisor's messages: totals + what the LAST message contained
-        "moderation": moderation_view(st),
+        "moderation": moderation_view(st, sim.profanity_strikes if sim.profanity_hangup else 99),
         # which engine really wrote the client's lines (no more guessing why it looks rule-based)
         "engine": {**sim.engine_report(st),
                    "warning": _AUTO_REASON.get("client", "") if sim.llm is None else ""},
@@ -154,10 +154,12 @@ def view(call_id: str, sim: ClientSimulatorAgent, st: ConversationState) -> dict
     return out
 
 
-def moderation_view(st: ConversationState) -> dict:
+def moderation_view(st: ConversationState, strikes: int = 2) -> dict:
     last = st.turn_log[-1]["flags"] if st.turn_log else {}
     lvl = last.get("grossier_niveau", 0)
-    return {"count": st.profanity_count, "points": st.profanity_points,
+    return {"count": st.profanity_count, "points": st.profanity_points, "ended": st.ended_by_profanity,
+            "strikes_left": max(0, strikes - st.profanity_count), "client_swears": st.client_swears,
+            "client_swore_last": bool(st.turn_log and st.turn_log[-1].get("client_swore")),
             "last": ({"level": lvl, "level_name": LEVEL_NAME[lvl], "words": last.get("grossier_mots", []),
                       "categories": last.get("grossier_categories", [])} if lvl else None)}
 
@@ -231,7 +233,10 @@ class StartCall(BaseModel):
     darija_model: Optional[str] = None   # optional model name for the Darija model
     language: str = "auto"       # auto | fr | darija | en
     difficulty: float = Field(0, ge=0, le=1)
-    profanity_hangup: bool = True  # the client hangs up after a severe insult / repeated bad language
+    profanity_hangup: bool = True  # the client warns at the first offence, hangs up at the `profanity_strikes`-th
+    profanity_strikes: int = Field(2, ge=1, le=5)
+    client_swears: bool = True     # the angry client swears: lets you check the advisor's de-escalation
+    client_swear_turn: Optional[int] = Field(None, ge=1)  # force the first outburst at this advisor turn
     toxicity_model: str = "none"   # ML bad-words model on top of the word list: none | auto | <Hugging Face model name>
 
 
@@ -253,7 +258,8 @@ def start_call(body: StartCall):
                if body.language in ("auto", "darija") and (main_llm is not None or explicit_darija) else None)
     sim = ClientSimulatorAgent(seed=body.seed, llm=main_llm, judge_llm=make_llm(body.judge_llm, "judge"),
                                difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm,
-                               profanity_hangup=body.profanity_hangup,
+                               profanity_hangup=body.profanity_hangup, profanity_strikes=body.profanity_strikes,
+                               client_swears=body.client_swears, client_swear_turn=body.client_swear_turn,
                                toxicity_model=make_toxicity_model(body.toxicity_model))
     requests = sim.generate_requests(body.scenario, 10)
     if not requests:

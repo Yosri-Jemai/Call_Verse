@@ -200,3 +200,4 @@ td.win { background: var(--accent-soft); font-weight: 650; }
 /* bad-words warning under the transcript */
 .mod-warn { margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 14px; background: #fff4e0; color: #8a5a00; border: 1px solid #f1d49b; }
 .mod-warn.lvl-2, .mod-warn.lvl-3 { background: #fdecea; color: var(--bad); border-color: #f3c2bd; }
+.mod-warn.tip { background: #eaf3ff; color: #1d4f91; border-color: #bcd6f5; }

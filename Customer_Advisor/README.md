@@ -123,6 +123,34 @@ for every fee, limit, or procedure, and say when the passages do not support an
 answer. The old PostgreSQL full-text policy table and importer are retained as
 legacy code; they are no longer used for policy retrieval.
 
+### Optional Redis retrieval cache
+
+Redis caches only the results of bank-policy searches. Chroma remains the source
+of truth, and customer balances, transactions, profiles, and LLM responses are
+never placed in this cache. Cache keys are hashed and scoped by the normalized
+question, category, current date, embedding model, and retrieval settings. Entries
+expire after five minutes by default.
+
+Start Docker Desktop, then from the repository root run:
+
+```powershell
+docker compose -f .\Customer_Advisor\docker-compose.redis.yml up -d
+```
+
+The project launcher also starts this local Redis container when Docker is
+available. To check it, run:
+
+```powershell
+docker compose -f .\Customer_Advisor\docker-compose.redis.yml ps
+```
+
+Configure `REDIS_URL`, `REDIS_CACHE_ENABLED`, and
+`REDIS_POLICY_CACHE_TTL_SECONDS` in `.env` to change the connection, disable the
+cache, or tune its expiry. Redis is an optional performance layer: if it is
+disabled or unavailable, the agent logs the cache failure and searches Chroma
+normally. No Redis password is configured because the container binds only to
+the local machine; do not expose that port publicly.
+
 ## HTTP endpoints
 
 - `GET /health` — readiness status

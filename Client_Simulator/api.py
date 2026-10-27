@@ -204,6 +204,8 @@ class StartCall(BaseModel):
     scenario: str = "normal"
     seed: Optional[int] = None
     wait_seconds: float = Field(0, ge=0, le=3600)
+    mood: float = Field(0, ge=-1, le=1)
+    max_turns: int = Field(8, ge=1, le=30)
     llm: str = "auto"            # auto | none | claude | gemini | groq | ollama
     model: Optional[str] = None  # optional model name (see GET /api/llm/models)
     judge_llm: str = "none"      # LLM that judges the advisor's messages (none = keyword rules)
@@ -230,11 +232,14 @@ def start_call(body: StartCall):
     dar_llm = (make_darija_llm(body.darija_llm, body.darija_model)
                if body.language in ("auto", "darija") and (main_llm is not None or explicit_darija) else None)
     sim = ClientSimulatorAgent(seed=body.seed, llm=main_llm, judge_llm=make_llm(body.judge_llm, "judge"),
-                               difficulty=body.difficulty, language_weights=weights, darija_llm=dar_llm)
+                               max_turns=body.max_turns, difficulty=body.difficulty,
+                               language_weights=weights, darija_llm=dar_llm)
     requests = sim.generate_requests(body.scenario, 10)
     if not requests:
         raise HTTPException(500, "No request generated, try again.")
-    st = sim.start(sim.rng.choice(requests), wait_seconds=body.wait_seconds)
+    request = sim.rng.choice(requests)
+    request.initial_mood = body.mood
+    st = sim.start(request, wait_seconds=body.wait_seconds)
     call_id = uuid.uuid4().hex[:12]
     if len(CALLS) >= MAX_CALLS:
         CALLS.pop(next(iter(CALLS)))

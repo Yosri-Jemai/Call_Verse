@@ -523,6 +523,8 @@ regex==2026.1.15
     # via
     #   tiktoken
     #   transformers
+redis==6.4.0
+    # via cashy-agent
 requests==2.32.5
     # via
     #   datasets

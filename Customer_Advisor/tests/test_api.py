@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -220,3 +222,141 @@ def test_approval_without_pending_action_returns_conflict():
         )
 
     assert exc_info.value.status_code == 409
+
+
+class ApprovalCursor:
+    def __init__(self, rows=(), one_rows=()):
+        self.rows = rows
+        self.one_rows = list(one_rows)
+        self.query = ""
+        self.params = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def execute(self, query, params=None):
+        self.query = query
+        self.params = params
+
+    def fetchall(self):
+        return self.rows
+
+    def fetchone(self):
+        return self.one_rows.pop(0) if self.one_rows else None
+
+
+class ApprovalConnection:
+    def __init__(self, cursor):
+        self.test_cursor = cursor
+
+    def cursor(self):
+        return self.test_cursor
+
+
+@contextmanager
+def approval_connection(cursor):
+    yield ApprovalConnection(cursor)
+
+
+def approval_row(approval_id, thread_id, status="pending", result=None):
+    return (
+        approval_id,
+        thread_id,
+        1,
+        "create_transaction",
+        "Create expense of $25.00?",
+        {"details": {"amount": 25, "account": "Demo"}},
+        status,
+        datetime.now(timezone.utc),
+        None,
+        result,
+    )
+
+
+def test_create_admin_approval_saves_advisor_explanation(monkeypatch):
+    approval_id = uuid4()
+    thread_id = uuid4()
+    cursor = ApprovalCursor(one_rows=[approval_row(approval_id, thread_id)])
+    monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
+
+    response = api.create_admin_approval(
+        api.ApprovalCreateRequest(
+            thread_id=thread_id,
+            customer_id=1,
+            confirmation={
+                "action": "create_transaction",
+                "message": "Create expense of $25.00?",
+                "details": {"amount": 25, "account": "Demo"},
+            },
+        )
+    )
+
+    assert response["id"] == str(approval_id)
+    assert response["message"] == "Create expense of $25.00?"
+    assert response["details"]["details"]["amount"] == 25
+    assert "ON CONFLICT (thread_id)" in cursor.query
+
+
+def test_create_admin_approval_rejects_non_financial_actions(monkeypatch):
+    def fail_if_called():
+        raise AssertionError("Invalid approvals must not be written.")
+
+    monkeypatch.setattr(api, "get_connection", fail_if_called)
+
+    with pytest.raises(HTTPException) as exc_info:
+        api.create_admin_approval(
+            api.ApprovalCreateRequest(
+                thread_id=uuid4(),
+                customer_id=1,
+                confirmation={"action": "update_customer_profile", "message": "Change name"},
+            )
+        )
+
+    assert exc_info.value.status_code == 422
+
+
+def test_admin_decision_resumes_paused_chat_and_records_result(monkeypatch):
+    approval_id = uuid4()
+    thread_id = uuid4()
+    before = approval_row(approval_id, thread_id, status="processing")
+    result_payload = api.ChatResponse(
+        thread_id=thread_id,
+        message="The expense was recorded.",
+    )
+    after = approval_row(
+        approval_id,
+        thread_id,
+        status="approved",
+        result=result_payload.model_dump(mode="json"),
+    )
+    cursors = [
+        ApprovalCursor(one_rows=[before]),
+        ApprovalCursor(one_rows=[after]),
+    ]
+
+    def next_connection():
+        return approval_connection(cursors.pop(0))
+
+    monkeypatch.setattr(api, "get_connection", next_connection)
+    resumed = []
+
+    def fake_chat(payload, request):
+        resumed.append((payload, request))
+        return result_payload
+
+    monkeypatch.setattr(api, "chat", fake_chat)
+
+    response = api.review_admin_approval(
+        approval_id,
+        api.ApprovalDecisionRequest(approved=True),
+        make_request(FakeAgent()),
+    )
+
+    assert response["status"] == "approved"
+    assert response["result"]["message"] == "The expense was recorded."
+    assert resumed[0][0].thread_id == thread_id
+    assert resumed[0][0].approved is True
+    assert resumed[0][0].customer_id == 1

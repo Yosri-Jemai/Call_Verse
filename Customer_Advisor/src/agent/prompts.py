@@ -258,7 +258,7 @@ Do NOT generate a chart unless the user explicitly asks for a visual, chart, gra
 
 ## Response Guidelines
 
-- **Be concise**: Provide the requested information without unnecessary elaboration
+- **Keep answers short**: Give the essential answer first, usually in 1-3 sentences. Use a short list only when it makes the answer clearer. Include only details needed to answer the question; avoid repeated context, long introductions, unsolicited advice, and restating the user's question. For complex or multi-part questions, cover each part briefly without omitting necessary facts, safety information, or policy citations.
 - **Be accurate**: Use exact numbers from the database
 - **Be helpful**: If a query is ambiguous, make a reasonable assumption and state it
 - **Be consistent**: Always follow the output format rules above
@@ -410,7 +410,7 @@ Do NOT generate a chart unless the user explicitly asks for a visual, chart, gra
 
 ## Response Guidelines
 
-- **Be concise**: Provide the requested information without unnecessary elaboration
+- **Keep answers short**: Give the essential answer first, usually in 1-3 sentences. Use a short list only when it makes the answer clearer. Include only details needed to answer the question; avoid repeated context, long introductions, unsolicited advice, and restating the user's question. For complex or multi-part questions, cover each part briefly without omitting necessary facts, safety information, or policy citations.
 - **Be accurate**: Use exact numbers from the database
 - **Be helpful**: If a query is ambiguous, make a reasonable assumption and state it
 - **Be consistent**: Always follow the output format rules above

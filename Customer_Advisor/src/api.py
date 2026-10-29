@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 from src.agent.graph import create_agent
 from src.agent.policy_rag import get_embeddings
 from src.config import settings
+from src.db.connection import get_connection
 from src.stt.transcriber import transcribe_audio_file
 from src.tss.synthesizer import synthesize_async
 
@@ -28,6 +30,7 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 SERVICE_BUSY_DETAIL = "Le service est temporairement saturé, réessayez plus tard."
 LLM_UNAVAILABLE_DETAIL = "Le service de génération est indisponible."
 INTERNAL_ERROR_DETAIL = "Erreur interne."
+APPROVAL_ACTIONS = {"create_transaction", "update_transaction", "delete_transaction"}
 
 
 class ChatRequest(BaseModel):
@@ -52,6 +55,16 @@ class ChatResponse(BaseModel):
     confirmation: dict[str, Any] | None = None
 
 
+class ApprovalCreateRequest(BaseModel):
+    thread_id: UUID
+    customer_id: int = Field(ge=1)
+    confirmation: dict[str, Any]
+
+
+class ApprovalDecisionRequest(BaseModel):
+    approved: bool
+
+
 class TranscriptionResponse(BaseModel):
     text: str
     language: str
@@ -59,6 +72,10 @@ class TranscriptionResponse(BaseModel):
 
 
 MAX_AUDIO_SIZE = 25 * 1024 * 1024
+APPROVAL_COLUMNS = """
+    id, thread_id, customer_id, action, message, details, status,
+    created_at, reviewed_at, result
+"""
 SUPPORTED_AUDIO_TYPES = {
     "audio/flac",
     "audio/mp3",
@@ -76,9 +93,42 @@ async def lifespan(app: FastAPI):
     get_embeddings()
     with PostgresSaver.from_conn_string(settings.database_url) as checkpointer:
         checkpointer.setup()
+        ensure_approval_table()
         app.state.agent = create_agent(checkpointer=checkpointer)
         logger.info("Agent ready [mode=%s db=%s]", settings.app_mode, settings.resolved_db_name)
         yield
+
+
+def ensure_approval_table() -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS admin_approval_requests (
+                    id UUID PRIMARY KEY,
+                    thread_id UUID NOT NULL,
+                    customer_id INTEGER NOT NULL CHECK (customer_id > 0),
+                    action TEXT NOT NULL CHECK (
+                        action IN ('create_transaction', 'update_transaction', 'delete_transaction')
+                    ),
+                    message TEXT NOT NULL,
+                    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK (
+                        status IN ('pending', 'processing', 'approved', 'declined', 'failed')
+                    ),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_at TIMESTAMPTZ,
+                    result JSONB
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_approval_pending_thread
+                ON admin_approval_requests (thread_id)
+                WHERE status IN ('pending', 'processing')
+                """
+            )
 
 
 app = FastAPI(
@@ -89,13 +139,32 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
+
+
+def approval_view(row: tuple[Any, ...]) -> dict[str, Any]:
+    return {
+        "id": str(row[0]),
+        "thread_id": str(row[1]),
+        "customer_id": row[2],
+        "action": row[3],
+        "message": row[4],
+        "details": row[5],
+        "status": row[6],
+        "created_at": row[7].isoformat() if row[7] else None,
+        "reviewed_at": row[8].isoformat() if row[8] else None,
+        "result": row[9],
+    }
 
 
 def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
@@ -300,3 +369,183 @@ def chat(payload: ChatRequest, request: Request) -> ChatResponse:
         if _is_llm_error(exc):
             raise HTTPException(status_code=502, detail=LLM_UNAVAILABLE_DETAIL) from exc
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+
+
+@app.get("/api/admin/approvals")
+def list_admin_approvals(status: str = "pending") -> list[dict[str, Any]]:
+    if status not in {"pending", "all"}:
+        raise HTTPException(status_code=422, detail="status must be 'pending' or 'all'.")
+    query = f"SELECT {APPROVAL_COLUMNS} FROM admin_approval_requests"
+    if status == "pending":
+        query += " WHERE status IN ('pending', 'processing')"
+    query += " ORDER BY created_at DESC LIMIT 100"
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                rows = cur.fetchall()
+    except Exception as exc:
+        logger.exception("Could not load admin approval requests")
+        raise HTTPException(status_code=503, detail="Approval inbox is unavailable.") from exc
+    return [approval_view(row) for row in rows]
+
+
+@app.get("/api/admin/approvals/{approval_id}")
+def get_admin_approval(approval_id: UUID) -> dict[str, Any]:
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT {APPROVAL_COLUMNS} FROM admin_approval_requests WHERE id = %s",
+                    (approval_id,),
+                )
+                row = cur.fetchone()
+    except Exception as exc:
+        logger.exception("Could not load admin approval request %s", approval_id)
+        raise HTTPException(status_code=503, detail="Approval request status is unavailable.") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Approval request not found.")
+    return approval_view(row)
+
+
+@app.post("/api/admin/approvals", status_code=201)
+def create_admin_approval(payload: ApprovalCreateRequest) -> dict[str, Any]:
+    action = payload.confirmation.get("action")
+    if action not in APPROVAL_ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail="Only financial transaction actions can be sent for approval.",
+        )
+
+    message = payload.confirmation.get("message")
+    if not isinstance(message, str) or not message.strip():
+        raise HTTPException(status_code=422, detail="The advisor's approval explanation is required.")
+    details = {
+        key: payload.confirmation[key]
+        for key in ("details", "current", "changes")
+        if key in payload.confirmation
+    }
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    INSERT INTO admin_approval_requests
+                        (id, thread_id, customer_id, action, message, details)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                    ON CONFLICT (thread_id)
+                    WHERE status IN ('pending', 'processing')
+                    DO UPDATE SET thread_id = EXCLUDED.thread_id
+                    RETURNING {APPROVAL_COLUMNS}
+                    """,
+                    (
+                        uuid4(),
+                        payload.thread_id,
+                        payload.customer_id,
+                        action,
+                        message.strip(),
+                        json.dumps(details, ensure_ascii=False),
+                    ),
+                )
+                row = cur.fetchone()
+    except Exception as exc:
+        logger.exception("Could not send advisor action to the admin inbox")
+        raise HTTPException(status_code=503, detail="Could not send the action to the approval inbox.") from exc
+    if row is None:
+        raise HTTPException(status_code=503, detail="Approval request was not saved.")
+    return approval_view(row)
+
+
+@app.post("/api/admin/approvals/{approval_id}/decision")
+def review_admin_approval(
+    approval_id: UUID,
+    payload: ApprovalDecisionRequest,
+    request: Request,
+) -> dict[str, Any]:
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    UPDATE admin_approval_requests
+                    SET status = 'processing'
+                    WHERE id = %s AND status = 'pending'
+                    RETURNING {APPROVAL_COLUMNS}
+                    """,
+                    (approval_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    cur.execute(
+                        "SELECT status FROM admin_approval_requests WHERE id = %s",
+                        (approval_id,),
+                    )
+                    existing = cur.fetchone()
+                    if existing is None:
+                        raise HTTPException(status_code=404, detail="Approval request not found.")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Approval request is already {existing[0]}.",
+                    )
+                approval = approval_view(row)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Could not claim admin approval request %s", approval_id)
+        raise HTTPException(status_code=503, detail="Could not claim the approval request.") from exc
+
+    try:
+        response = chat(
+            ChatRequest(
+                thread_id=UUID(approval["thread_id"]),
+                customer_id=approval["customer_id"],
+                approved=payload.approved,
+            ),
+            request,
+        )
+    except HTTPException as exc:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE admin_approval_requests
+                    SET status = 'failed', reviewed_at = CURRENT_TIMESTAMP,
+                        result = %s::jsonb
+                    WHERE id = %s AND status = 'processing'
+                    """,
+                    (json.dumps({"detail": exc.detail}, ensure_ascii=False), approval_id),
+                )
+        raise
+
+    final_status = "pending" if response.pending_approval else (
+        "approved" if payload.approved else "declined"
+    )
+    result = response.model_dump(mode="json")
+    next_message = response.message or approval["message"]
+    next_details = response.confirmation or approval["details"]
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE admin_approval_requests
+                SET status = %s, message = %s, details = %s::jsonb,
+                    reviewed_at = CASE WHEN %s = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END,
+                    result = %s::jsonb
+                WHERE id = %s
+                RETURNING {APPROVAL_COLUMNS}
+                """,
+                (
+                    final_status,
+                    next_message,
+                    json.dumps(next_details, ensure_ascii=False),
+                    final_status,
+                    json.dumps(result, ensure_ascii=False),
+                    approval_id,
+                ),
+            )
+            updated = cur.fetchone()
+    if updated is None:
+        raise HTTPException(status_code=503, detail="Could not save the approval decision.")
+    return approval_view(updated)

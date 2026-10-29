@@ -2,6 +2,7 @@ from argparse import Namespace
 from unittest.mock import patch
 
 import run_simulation
+import api as simulator_api
 from client_simulator import ClientSimulatorAgent
 
 
@@ -67,3 +68,24 @@ def test_pending_financial_action_is_automatically_declined():
         "approved": False,
         "customer_id": 1,
     }
+
+
+def test_dashboard_call_uses_selected_starting_mood_and_turn_limit():
+    response = simulator_api.start_call(
+        simulator_api.StartCall(
+            scenario="normal",
+            seed=42,
+            mood=-0.75,
+            max_turns=3,
+            language="fr",
+            llm="none",
+        )
+    )
+    sim, state = simulator_api.CALLS[response["call_id"]]
+
+    try:
+        assert state.mood == -0.75
+        assert state.request.initial_mood == -0.75
+        assert sim.max_turns == 3
+    finally:
+        simulator_api.CALLS.pop(response["call_id"], None)

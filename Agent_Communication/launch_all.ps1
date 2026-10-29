@@ -1,47 +1,127 @@
 param(
-    [ValidateSet("normal", "fin_de_mois", "panne", "campagne", "vague_de_fraude", "contestation_carte", "vishing_otp", "virement_sans_verification")]
-    [string]$Scenario = "normal",
-    [ValidateRange(-1.0, 1.0)]
-    [double]$Mood = 0,
-    [ValidateSet("auto", "fr", "darija", "en")]
-    [string]$Language = "auto",
-    [ValidateRange(0.0, 1.0)]
-    [double]$Difficulty = 0,
-    [string]$Seed = "",
-    [ValidateRange(1, 100)]
-    [int]$MaxTurns = 8,
-    [ValidateSet("rules", "auto", "claude", "gemini", "groq", "ollama")]
-    [string]$ClientLlm = "auto",
     [ValidateRange(1024, 65535)]
-    [int]$AdvisorPort = 8000
+    [int]$AdvisorPort = 8000,
+    [ValidateRange(1024, 65535)]
+    [int]$ClientApiPort = 8001,
+    [ValidateRange(1024, 65535)]
+    [int]$UiPort = 3000
 )
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $clientDir = Join-Path $root "Client_Simulator"
 $advisorDir = Join-Path $root "Customer_Advisor"
-$activationScript = ".\.venv\Scripts\Activate.ps1"
-$ports = @($AdvisorPort)
+$frontendDir = Join-Path $PSScriptRoot "frontend"
+$ports = @($AdvisorPort, $ClientApiPort, $UiPort) | Select-Object -Unique
 
 foreach ($requiredPath in @(
     (Join-Path $clientDir ".venv\Scripts\Activate.ps1"),
     (Join-Path $advisorDir ".venv\Scripts\Activate.ps1"),
-    (Join-Path $PSScriptRoot "run_simulation.py")
+    (Join-Path $frontendDir "package.json"),
+    (Join-Path $frontendDir "node_modules\next\dist\bin\next")
 )) {
     if (-not (Test-Path $requiredPath)) {
-        throw "Required path not found: $requiredPath"
+        throw "Required path not found: $requiredPath. Install the project dependencies and retry."
     }
+}
+
+if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+    throw "npm.cmd was not found. Install Node.js and retry."
 }
 
 $occupiedPorts = @(
     Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
         Where-Object { $_.LocalPort -in $ports }
 )
-if ($occupiedPorts.Count -gt 0) {
-    $details = $occupiedPorts | ForEach-Object {
-        "port $($_.LocalPort) (PID $($_.OwningProcess))"
+
+function Test-HealthyService {
+    param(
+        [string]$Url,
+        [string]$ExpectedProperty,
+        [object]$ExpectedValue
+    )
+
+    try {
+        $response = Invoke-RestMethod -Uri $Url -TimeoutSec 3
+        return $response.$ExpectedProperty -eq $ExpectedValue
+    } catch {
+        return $false
     }
-    throw "Required port(s) already in use: $($details -join ', '). Stop those apps or free the ports, then retry."
+}
+
+$advisorAlreadyRunning = $false
+$clientAlreadyRunning = $false
+$uiAlreadyRunning = $false
+$conflicts = @()
+foreach ($port in ($occupiedPorts | Select-Object -ExpandProperty LocalPort -Unique)) {
+    $listeners = @($occupiedPorts | Where-Object { $_.LocalPort -eq $port })
+    $healthy = $false
+
+    if ($port -eq $AdvisorPort) {
+        $healthy = Test-HealthyService `
+            -Url "http://127.0.0.1:$AdvisorPort/health" `
+            -ExpectedProperty "status" `
+            -ExpectedValue "ok"
+        $advisorAlreadyRunning = $healthy
+    } elseif ($port -eq $ClientApiPort) {
+        $healthy = Test-HealthyService `
+            -Url "http://127.0.0.1:$ClientApiPort/api/health" `
+            -ExpectedProperty "ok" `
+            -ExpectedValue $true
+        $clientAlreadyRunning = $healthy
+    } elseif ($port -eq $UiPort) {
+        try {
+            $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$UiPort" -TimeoutSec 3
+            $healthy = $page.StatusCode -eq 200 -and $page.Content -match '(/_next/|__next)'
+        } catch {
+            $healthy = $false
+        }
+        $uiAlreadyRunning = $healthy
+    }
+
+    if (-not $healthy) {
+        $conflicts += $listeners | ForEach-Object {
+            "port $($_.LocalPort) (PID $($_.OwningProcess))"
+        }
+    } else {
+        Write-Host "Reusing the existing project service on port $port."
+    }
+}
+
+if ($conflicts.Count -gt 0) {
+    throw "Required port(s) already in use by another process: $($conflicts -join ', '). Stop those apps or choose other ports, then retry."
+}
+
+$redisComposeFile = Join-Path $advisorDir "docker-compose.redis.yml"
+$dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
+if ($dockerCommand) {
+    $dockerAvailable = $false
+    try {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $dockerCommand.Source info --format "{{.ServerVersion}}" 2>&1 | Out-Null
+        $dockerAvailable = $LASTEXITCODE -eq 0
+    } catch {
+        $dockerAvailable = $false
+    } finally {
+        if ($null -ne $previousErrorActionPreference) {
+            $ErrorActionPreference = $previousErrorActionPreference
+            Remove-Variable previousErrorActionPreference
+        }
+    }
+
+    if ($dockerAvailable) {
+        & $dockerCommand.Source compose -f $redisComposeFile up -d
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Redis cache is running on 127.0.0.1:6379."
+        } else {
+            Write-Warning "Could not start Redis. The Advisor will continue without cache; see Customer_Advisor\README.md."
+        }
+    } else {
+        Write-Warning "Docker Desktop is not running. The Advisor will continue without Redis cache. Start Docker Desktop and run 'docker compose -f .\Customer_Advisor\docker-compose.redis.yml up -d' to enable it."
+    }
+} else {
+    Write-Warning "Docker is not installed. The Advisor will continue without Redis cache."
 }
 
 function Start-AppTerminal {
@@ -81,33 +161,32 @@ function Wait-ForEndpoint {
     throw "$ServiceName did not become ready at $Url within 120 seconds. Check its terminal window."
 }
 
-$advisorCommand = "`$env:API_PORT = '$AdvisorPort'; . '$activationScript'; python app.py"
+$advisorActivation = ".\.venv\Scripts\Activate.ps1"
+$clientActivation = ".\.venv\Scripts\Activate.ps1"
+$corsOrigins = "http://localhost:$UiPort,http://127.0.0.1:$UiPort"
+$advisorCommand = "`$env:API_PORT = '$AdvisorPort'; `$env:CORS_ORIGINS = '$corsOrigins'; . '$advisorActivation'; python app.py"
+$clientCommand = "`$env:CORS_ORIGINS = '$corsOrigins'; . '$clientActivation'; python -m uvicorn api:app --host 127.0.0.1 --port $ClientApiPort"
+$uiCommand = "`$env:NEXT_PUBLIC_ADVISOR_API_URL = 'http://127.0.0.1:$AdvisorPort'; `$env:NEXT_PUBLIC_CLIENT_API_URL = 'http://127.0.0.1:$ClientApiPort'; npm.cmd run dev -- --hostname 127.0.0.1 --port $UiPort"
 
-Write-Host "Starting Customer Advisor API and automatic Client Simulator interaction..."
-Start-AppTerminal -Title "Customer Advisor API :$AdvisorPort" -WorkingDirectory $advisorDir -Command $advisorCommand
+Write-Host "Starting the Customer Advisor API, Client Simulator API, and Relay dashboard..."
+if (-not $advisorAlreadyRunning) {
+    Start-AppTerminal -Title "Customer Advisor API :$AdvisorPort" -WorkingDirectory $advisorDir -Command $advisorCommand
+}
+if (-not $clientAlreadyRunning) {
+    Start-AppTerminal -Title "Client Simulator API :$ClientApiPort" -WorkingDirectory $clientDir -Command $clientCommand
+}
 
 Wait-ForEndpoint -Url "http://127.0.0.1:$AdvisorPort/health" -ServiceName "Customer Advisor API"
+Wait-ForEndpoint -Url "http://127.0.0.1:$ClientApiPort/api/health" -ServiceName "Client Simulator API"
 
-$pipelineArguments = @(
-    "--scenario", $Scenario,
-    "--mood", $Mood.ToString([Globalization.CultureInfo]::InvariantCulture),
-    "--language", $Language,
-    "--difficulty", $Difficulty.ToString([Globalization.CultureInfo]::InvariantCulture),
-    "--max-turns", "$MaxTurns",
-    "--client-llm", $ClientLlm,
-    "--advisor-url", "http://127.0.0.1:$AdvisorPort"
-)
-if ($Seed -ne "") {
-    $pipelineArguments += @("--seed", $Seed)
+if (-not $uiAlreadyRunning) {
+    Start-AppTerminal -Title "Relay Agent Communication UI :$UiPort" -WorkingDirectory $frontendDir -Command $uiCommand
 }
-$quotedPipelineArguments = ($pipelineArguments | ForEach-Object {
-    "'" + $_.Replace("'", "''") + "'"
-}) -join " "
-$pipelineCommand = ". '$activationScript'; python '$($PSScriptRoot)\run_simulation.py' $quotedPipelineArguments"
-Start-AppTerminal -Title "Agent Communication Pipeline" -WorkingDirectory $clientDir -Command $pipelineCommand
+Wait-ForEndpoint -Url "http://127.0.0.1:$UiPort" -ServiceName "Relay dashboard"
 
 Write-Host ""
+Write-Host "Relay dashboard: http://127.0.0.1:$UiPort"
 Write-Host "Customer Advisor API: http://127.0.0.1:$AdvisorPort"
-Write-Host "The Client Simulator customer is already communicating with Customer Advisor."
-Write-Host "Pending financial actions are automatically declined in simulation mode."
+Write-Host "Client Simulator API: http://127.0.0.1:$ClientApiPort"
+Write-Host "Use the dashboard to choose a scenario, mood, language, and response mode."
 Write-Host "Close each service window or press Ctrl+C in it to stop that process."

@@ -1,5 +1,7 @@
 import logging
 from datetime import date
+from typing import Any
+
 from langchain_core.messages import SystemMessage
 from langgraph.graph import END
 
@@ -10,6 +12,7 @@ from src.config import settings
 from src.tools import all_tools
 
 logger = logging.getLogger("cashy.agent")
+GROQ_MAX_HISTORY_CHARACTERS = 5000
 
 # Default models per provider
 DEFAULT_MODELS = {
@@ -168,6 +171,39 @@ def _sanitize_tools(tools: list) -> list:
     return sanitized
 
 
+def _trim_groq_history(messages: list[Any]) -> list[Any]:
+    """Keep the latest complete user turns within Groq's smaller request budget."""
+    user_turn_starts = [
+        index for index, message in enumerate(messages) if message.type == "human"
+    ]
+    if not user_turn_starts:
+        return messages
+
+    latest_turn_start = user_turn_starts[-1]
+    history_characters = sum(
+        len(str(message.content)) for message in messages[latest_turn_start:]
+    )
+    first_kept_turn = latest_turn_start
+
+    for turn_index in range(len(user_turn_starts) - 2, -1, -1):
+        turn_start = user_turn_starts[turn_index]
+        turn_end = user_turn_starts[turn_index + 1]
+        turn_characters = sum(
+            len(str(message.content)) for message in messages[turn_start:turn_end]
+        )
+        if history_characters + turn_characters > GROQ_MAX_HISTORY_CHARACTERS:
+            break
+        history_characters += turn_characters
+        first_kept_turn = turn_start
+
+    if first_kept_turn:
+        logger.info(
+            "Trimmed %d older conversation messages for Groq request size",
+            first_kept_turn,
+        )
+    return messages[first_kept_turn:]
+
+
 def call_model(state: AgentState) -> dict:
     """Invoke the LLM with system prompt and tools."""
     model = get_model()
@@ -180,10 +216,16 @@ def call_model(state: AgentState) -> dict:
          if message.type == "human" and isinstance(message.content, str)),
         "",
     )
-    style_examples = retrieve_style_examples(latest_user_message)
-    if style_examples:
-        messages.append(SystemMessage(content=style_examples))
-    messages.extend(state["messages"])
+    is_groq = settings.resolved_provider == "groq"
+    if not is_groq:
+        style_examples = retrieve_style_examples(latest_user_message)
+        if style_examples:
+            messages.append(SystemMessage(content=style_examples))
+
+    conversation = state["messages"]
+    if is_groq:
+        conversation = _trim_groq_history(conversation)
+    messages.extend(conversation)
 
     # HuggingFace Inference API requires latin-1 compatible text
     if settings.resolved_provider in ("huggingface", "free-tier"):

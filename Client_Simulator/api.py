@@ -226,8 +226,8 @@ def scenarios():
 # Live call: you play the advisor, the simulator plays the client
 # --------------------------------------------------------------------------
 class StartCall(BaseModel):
-    scenario: str = "normal"
     seed: Optional[int] = None
+    scenario: str = "normal"
     wait_seconds: float = Field(0, ge=0, le=3600)
     mood: float = Field(0, ge=-1, le=1)
     max_turns: int = Field(8, ge=1, le=30)

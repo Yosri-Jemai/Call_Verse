@@ -178,6 +178,30 @@ ANGRY = {"fr": ["Ça fait trop longtemps, je veux une solution maintenant !",
          "en": ["This is taking way too long, I want a solution now!",
                 "This is unacceptable, can't you even answer?"],
          "da": ["Barcha wa9t, n7eb 7all tawa !", "Hedha mch ma9boul, ma ta3rfouch tjawbou ?"]}
+# ---- the client loses patience and swears (at the situation / the bank, never a slur or a threat) --------
+ANGRY_SWEAR = {"fr": ["Putain, mais c'est une blague ? Ça fait des jours que je vous le dis, votre service est de la merde !",
+                      "Merde, vous allez me répondre oui ou non ?! J'en ai ras le bol, c'est n'importe quoi !",
+                      "Bordel, vous le faites exprès ou quoi ? Je vous le répète pour la dixième fois !",
+                      "Putain de banque de merde, vous m'avez mis hors de moi !"],
+               "en": ["Damn it, this is bullshit! I've been telling you for days and nobody does anything!",
+                      "What the hell, this is crap! Just give me a straight answer, I'm sick of this!",
+                      "Damn, are you kidding me? This is a joke, your service is crap!",
+                      "Shit, this is ridiculous! I'm so sick of this bullshit!"],
+               "da": ["Yel3an, khidma khra, 7atta 7aja ma tet3mal ! 9olt lik 100 mara !",
+                      "Yezzi, hedhi khra ! Kol marra nafs el 7kéya, n7eb 7all tawa !",
+                      "Khra 3lik w 3la el banka, 3ayyatt n9oul nafs el 7aja !",
+                      "Yel3an hedha el wad3, ma fama 7atta 7all, khra !"]}
+# ---- the advisor swore / insulted the client ------------------------------------------------
+OFFENDED = {"fr": ["Pardon ? Surveillez votre langage. C'est un premier avertissement : si vous recommencez, je ne pourrai pas continuer.",
+                   "Je vous ai déjà prévenu. Dernier avertissement : encore une insulte et je raccroche."],
+            "en": ["Excuse me? Watch your language. This is a first warning: if you do it again, I won't continue.",
+                   "I already warned you. Last warning: one more insult and I'm hanging up."],
+            "da": ["Chnouwa ? Raddi belek 3la kalmetek. Hedha awel avertissement : kan 3awadtha, ma nkamelch.",
+                   "9olt lik dhaya3. Hedha el avertissement el akhir : kan 3awadt matsabbni, nsakker."]}
+# ---- the advisor kept insulting after the warning: the client ends the call ----------------
+HUNG_UP_INSULT = {"fr": "Je vous ai prévenu. Je ne tolère pas ce langage, je raccroche et je dépose une réclamation.",
+                  "en": "I warned you. I won't put up with this language, I'm hanging up and filing a complaint.",
+                  "da": "9olt lik. Ma nest7amalch el kalam hedha, nsakker w na3mel réclamation."}
 UNSURE = {"fr": "Vous n'êtes pas sûr ? J'ai besoin d'une information fiable.",
           "en": "You're not sure? I need reliable information.",
           "da": "Mch mt2aked ? N7eb ma3louma s7iha."}

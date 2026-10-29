@@ -20,6 +20,8 @@ KPIs and ground truth for the Quality Analyst and the Workforce Manager.
 | client_simulator.py | The agent: profiles, intents, scenarios, conversation engine, `AdvisorView` |
 | persona.py | Hidden persona: synthetic CRM facts, what the caller really knows, claim checking |
 | judge.py | Reads the advisor's message (LLM judge or negation-safe rules) |
+| profanity.py | Bad-words detection (French, English, Darija arabizi + Arabic script), masked output, extra words file |
+| toxicity_model.py | Optional ML toxicity model (Hugging Face, XLM-R) used on top of the word list |
 | load_model.py | Hourly profile, incidents, difficulty, `Curriculum` |
 | banks.py | Rule-based lines in French and Darija, fraud ladders |
 | advisors.py | Scripted advisors: `baseline_advisor` (verifies identity), `naive_advisor` (never does) |
@@ -30,6 +32,7 @@ KPIs and ground truth for the Quality Analyst and the Workforce Manager.
 | audio.py | Whisper (speech to text) and gTTS (text to speech) |
 | api.py + frontend/ | FastAPI backend and Next.js UI |
 | test_client_simulator.py | Tests (25) |
+| test_profanity.py | Tests of the bad-words detection and its effect on the call and the scorecard |
 
 ## Install and run
     pip install -r requirements.txt        # Whisper also needs ffmpeg
@@ -217,13 +220,70 @@ If the model still repeats a previous line, it gets **one corrective retry** tha
 | Identity verification | 20 | asked, >= 2 specific facts, early, before any action (n/a for low-risk questions) |
 | Empathy | 15 | acknowledges an upset / urgent client early; rudeness is penalised |
 | Accuracy & clarity | 15 | concrete figures, cites a rule, no hesitation, not curt |
-| Compliance | 25 | no secret-code / OTP request, no action before verification, no fraudster served, no guaranteed refund |
+| Compliance | 25 | no secret-code / OTP request, no action before verification, no fraudster served, no guaranteed refund, no bad language |
 | Resolution | 10 | outcome + mandatory steps of the scenario |
 | Closing | 5 | polite closing once resolved |
 
 Plus a per-scenario **checklist**, the **critical failures** (any one caps the total at 40), warnings, and a **turn by turn**
 list of what was good / bad. `sim.summary(st)` now carries `qa_total`, `qa_grade`, `qa_critical` and `repeats` for the KPIs.
 The rules read French and English (and a few Tunisian greetings); the LLM judge keeps judging the conversation flow.
+
+### 2b. Bad-words detection (`profanity.py`)
+Every advisor message is scanned (French, English, Tunisian Darija in Latin or Arabic script). The scan is part of the
+judge (`rule_analyse`), so it works with or without an LLM judge, and an LLM judge cannot excuse it (tone is forced to `rude`).
+
+| Level | Meaning | Examples (masked) | Effect |
+|---|---|---|---|
+| 1 | mild, unprofessional | `st****e`, `da**` | mood -0.10 (plus -0.25 rude); scorecard **warning**, compliance -30 |
+| 2 | vulgar / insulting | `c*****d`, `m***e`, `sh*t` | mood -0.20 (plus -0.25 rude); scorecard **critical failure** (total capped at 40) |
+| 3 | severe: sexual / family insults, threats | `f**k`, `p**e`, `je vais vous tuer` | mood -0.30 (plus -0.25 rude); critical failure |
+
+* **Two warnings, then the call ends.** Offence 1 and offence 2 (any level) each get a firm warning from the client
+  (« first warning », then « last warning »: rule bank `banks.OFFENDED`, or a numbered instruction in the LLM prompt).
+  At the 3rd offence the client says so and **hangs up** (`banks.HUNG_UP_INSULT`); the scorecard records a critical failure
+  ("the client hung up because of the advisor's bad language"). `ClientSimulatorAgent(profanity_strikes=2)` gives one warning,
+  `profanity_strikes=1` hangs up at once (API: `profanity_strikes` in `POST /api/calls`). `profanity_hangup=False` only detects
+  and scores, without ever ending the call.
+* Whole-word matching (no "Scunthorpe problem"), robust to accents, upper case, leet speak (`c0nnard`), stretched letters
+  (`fuuuck`), masked letters (`f*ck`) and spaced letters (`f u c k`). The bad words are always stored and shown **masked**.
+* Only the advisor is checked: the simulated client may be angry or rude by design.
+* Add your own words in `profanity_extra.txt` (`word` or `word,level`) or point `PROFANITY_EXTRA_FILE` to another file.
+* API: every call response has a `moderation` block (`count`, `points`, `last`); `POST /api/moderation/check {"text": "..."}`
+  scans any text. The UI shows a warning under the transcript, and the scorecard lists the offending turn.
+* **Optional ML model** (`toxicity_model.py`): `pip install transformers torch`, then `"toxicity_model": "auto"` in `POST /api/calls`
+  (or `ClientSimulatorAgent(toxicity_model=load_toxicity_model("auto"))`). Default model:
+  `textdetox/twitter-xlmr-toxicity-classifier` (XLM-R large, ~2 GB download on first use; change it with `TOXICITY_MODEL`,
+  threshold with `TOXICITY_THRESHOLD`, default 0.7). The word list stays the authority: the model only **adds** detections,
+  and one made by the model alone counts as level 1 (level 2 above 0.95). If the model fails, the word list still works.
+  Published scores are good on French and English (F1 ~0.91) but weak on Arabic (~0.62), and Tunisian arabizi is not
+  covered, so keep the word list for Darija. Check any model on your own examples before trusting it.
+* The word list alone cannot understand context or sarcasm and will miss words that are not on the list: extend it
+  with the extra file as you meet new cases.
+
+#### The client swears too: two warnings, then the call is closed
+An honest client who is really angry loses patience and swears (at the situation or the bank: no threat, no slur). It happens
+when the mood is at or below `CLIENT_SWEAR_MOOD` (-0.55) from turn 2, never for a fraudster, with a pause of 2 turns between two
+outbursts (1 turn when the advisor ignored the last one). The rule is the same as for the advisor:
+**outburst 1 and 2 = the advisor must warn the client; the 3rd outburst closes the call** (status `closed`,
+`ended_by_client_abuse`; the UI says "Call closed: the client kept swearing after 2 warnings").
+
+To test an advisor on purpose, make the client abusive: `ClientSimulatorAgent(client_swear_turn=3)` (API: `client_swear_turn: 3`
+in `POST /api/calls`) makes it swear from turn 3 on, whatever the mood. `client_swear_strikes` changes the number of outbursts that
+end the call (default 3), and `client_swears=False` turns it all off. The LLM client gets an instruction to swear in that
+reply, and the rule-based client uses `banks.ANGRY_SWEAR` (4 lines per language, never the same twice); an outburst only counts if
+the detector really finds a bad word in the reply.
+
+What the advisor is expected to do (judge flags `rappel_respect` / `fin_appel_annonce`, then the scorecard):
+1. stay calm: no bad words back (otherwise the usual critical failure);
+2. acknowledge the frustration / apologise (`empathie`);
+3. warn the client politely to stay respectful, or escalate to a manager (`rappel_respect` / `escalade`), after each outburst;
+4. when the call is closed after the 3rd outburst, it should have given two warnings.
+
+Effects: good handling (empathy + reminder or escalation) gives the client +0.12 mood and closes that outburst; ignoring it
+leaves it open. The scorecard adds checklist items ("Stayed calm and empathic", "Politely reminded the client...", "Warned the
+client twice before the call was closed"), a compliance penalty of 15 and a warning when the reminder is missing, and a
+warning when the call was closed after fewer than 2 warnings. The UI shows the procedure as a tip under the transcript after an
+outburst. The advisor's own prompt (`Customer_Advisor`) is not changed by this.
 
 ### 3. Compliance-trap scenarios (pick them in the Scenario menu)
 | Scenario | The caller | The advisor must |

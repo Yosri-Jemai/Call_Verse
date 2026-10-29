@@ -34,7 +34,7 @@ flowchart TD
 |---|---|---|
 | init | code | `sim.start`: queue wait lowers mood, abandon if patience exceeded, opening message |
 | advisor | external | any `AdvisorView -> str` (scripted, `llm_advisor`, a human, another graph) |
-| perceive | **LLM judge** (rules fallback) | reads the advisor message: empathy, identity check, secret-code request, refusal, resolution, escalation, tone |
+| perceive | **LLM judge** (rules fallback) | reads the advisor message: empathy, identity check, secret-code request, refusal, resolution, escalation, tone, **bad words** (`profanity.py`, always rules) |
 | update | code | mood, fraud pressure and strategy switch, end-of-call rules (resolved / escalated / hung up / max turns) |
 | speak | **LLM client** (rules fallback) | writes the next line from hidden goal, persona, emotion; fraudster uses only the facts it really knows; then identity claims are checked against the CRM **in code** |
 | finish | code | `summary()`: status, satisfaction, `is_fraudster`, `identity_verified`, `mood_trace`, `engine`, `llm_error` |
@@ -61,7 +61,7 @@ recorded in `st.llm_error` and `sim.llm_errors` (shown in the UI), never silent;
 | Layer | Files |
 |---|---|
 | Agent orchestration | `graph.py` (LangGraph, with a built-in runner if the package is missing) |
-| Agent logic | `client_simulator.py` (`perceive` / `update` / `speak`), `persona.py`, `judge.py`, `banks.py` |
+| Agent logic | `client_simulator.py` (`perceive` / `update` / `speak`), `persona.py`, `judge.py`, `profanity.py`, `banks.py` |
 | LLM access | `llm_backends.py` (.env loading, `auto_llm`, `check_llm`, JSON helpers) |
 | Environment | `load_model.py`, `sim_env.py` (SimPy: queue, advisors, KPIs), `advisors.py` |
 | Storage | `db.py` (PostgreSQL / SQLite: CRM, runs, calls, turns, KPIs) |

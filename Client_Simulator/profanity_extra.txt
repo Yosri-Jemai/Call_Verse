@@ -1,0 +1,4 @@
+# Extra bad words for profanity.py, one per line: `word` or `word,level` (1 mild, 2 vulgar, 3 severe; default 2).
+# Whole-word match, case and accents ignored. Lines starting with # are ignored.
+# Example (remove the # to enable):
+# crapule,1

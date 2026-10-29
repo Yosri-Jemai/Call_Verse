@@ -10,7 +10,10 @@ Two implementations with the same output:
 
 Output keys (old ones kept for compatibility):
   resolution, promesse, empathie, identite, identity_fields, identite_generique, demande_sensible,
-  escalade, attente, incertitude, refus, source, tone, contient_chiffre, trop_court, judge
+  escalade, attente, incertitude, refus, source, tone, contient_chiffre, trop_court, judge,
+  grossier (bad words), grossier_niveau (0-3), grossier_nb, grossier_mots (masked), grossier_categories,
+  rappel_respect (asks the client to stay respectful), fin_appel_annonce (warns the call may end),
+  toxicite_modele (score 0-1 of the optional ML model, absent without a model)
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ import re
 from typing import Callable, Optional
 
 from llm_backends import extract_json
+from profanity import _norm as _norm_text, scan as scan_profanity
 
 # --------------------------------------------------------------------------
 # Phrase lists (matched on whole words, accents kept)
@@ -214,6 +218,37 @@ def extra_flags(msg: str) -> dict:
     return f
 
 
+def profanity_flags(msg: str) -> dict:
+    """Bad-words detection (profanity.py). Words are stored masked ("c*****d"): the bad word itself is
+    never copied into the transcript analysis, the scorecard or the UI."""
+    r = scan_profanity(msg)
+    return {"grossier": r["found"], "grossier_niveau": r["level"], "grossier_nb": r["count"],
+            "grossier_mots": r["words"], "grossier_categories": r["categories"]}
+
+
+_ADJ = r"(poli|polie|polis|courtois\w*|respectueu\w*|cordial\w*|civil\w*)"
+RESPECT_RE = re.compile("|".join([
+    rf"\b(rester|restons|restez|reste|garder|gardons|gardez|garde|demeurer)\s+(un\s+|le\s+)?(ton\s+|dialogue\s+|langage\s+)?{_ADJ}",
+    r"(surveill\w+|moder\w+)\s+(votre|ton)\s+(langage|vocabulaire|ton)",
+    r"respect\s+(mutuel|reciproque)|dans le respect|manque de respect|propos\s+(injurieux|irrespectueux|insultants)",
+    r"(ne\s+)?(m'|nous\s+)?(insult|injuri)\w+",
+    r"(stay|remain|keep|be)\s+(calm\s+and\s+)?(respectful|polite|civil|courteous)|respectful\s+(language|tone|manner)",
+    r"(watch|mind)\s+your\s+language|abusive\s+language|inappropriate\s+language",
+    r"e7tiram|7tiram|ihtiram|mou2adab"]))
+ENDCALL_RE = re.compile("|".join([
+    r"(je serai|je serais|je devrai|je devrais|nous serons|sinon|si (cela|ca|vous) (continue|persiste|poursuivez))"
+    r".{0,60}(mettre fin|terminer|raccrocher|couper|clore|interrompre)",
+    r"(i will|i'll|i would|i may|i might|we will|we'll|otherwise|if this continues).{0,60}(end|terminate|disconnect)\s+(the\s+)?(call|conversation)",
+    r"nsakker|nsakkarha|nwa9ef el mokalma"]))
+
+
+def respect_flags(msg: str) -> dict:
+    """How the advisor answers a client who loses their temper: polite reminder to stay respectful, and the
+    warning that the call may be ended (the usual de-escalation procedure)."""
+    t = _norm_text(msg)
+    return {"rappel_respect": bool(RESPECT_RE.search(t)), "fin_appel_annonce": bool(ENDCALL_RE.search(t))}
+
+
 def rule_analyse(msg: str) -> dict:
     sents = _sentences(msg)
     allsents = [_tokens(msg)]                              # questions kept: "votre date de naissance ?" asks for it
@@ -234,6 +269,10 @@ def rule_analyse(msg: str) -> dict:
     polite, _ = _find(allsents, PHRASES["polite"], check_negation=False)
     f["tone"] = "rude" if rude else "polite" if (polite or f["empathie"]) else "cold" if f["trop_court"] else "neutral"
     f.update(extra_flags(msg))
+    f.update(profanity_flags(msg))
+    f.update(respect_flags(msg))
+    if f["grossier"]:
+        f["tone"] = "rude"                                 # swearing is never "polite" or "neutral"
     f["judge"] = "rules"
     return f
 
@@ -269,15 +308,37 @@ Réponds par un seul objet JSON, sans texte autour :
   "tone": "polite" | "neutral" | "cold" | "rude"}}"""
 
 
-class Judge:
-    """Verdict on an advisor message. llm=None -> rules only."""
+def apply_toxicity_model(flags: dict, msg: str, model) -> dict:
+    """Second layer: an ML toxicity model (toxicity_model.py). The word list stays the authority: the model
+    can only ADD a detection. When it is the only one to complain (no listed word) the verdict is gentler:
+    level 1, or level 2 when it is very sure (score >= 0.95)."""
+    r = model.predict(msg)
+    if r is None:                                           # model failed: keep the word-list verdict
+        flags["toxicite_modele"] = None
+        return flags
+    flags["toxicite_modele"] = r["score"]
+    if r["toxic"]:
+        if not flags.get("grossier"):
+            flags["grossier"], flags["grossier_niveau"], flags["grossier_nb"] = True, 2 if r["score"] >= 0.95 else 1, 1
+            flags["grossier_mots"], flags["grossier_categories"] = [], ["model"]
+            flags["tone"] = "rude"
+        elif "model" not in flags["grossier_categories"]:
+            flags["grossier_categories"] = sorted(set(flags["grossier_categories"]) | {"model"})
+    return flags
 
-    def __init__(self, llm: Optional[Callable[[str], str]] = None):
+
+class Judge:
+    """Verdict on an advisor message. llm=None -> rules only. toxicity_model=None -> word list only."""
+
+    def __init__(self, llm: Optional[Callable[[str], str]] = None, toxicity_model=None):
         self.llm = llm
+        self.toxicity_model = toxicity_model
         self.stats = {"llm": 0, "rules": 0, "llm_failed": 0}
 
     def analyse(self, advisor_msg: str, client_msg: str = "") -> dict:
         base = rule_analyse(advisor_msg)
+        if self.toxicity_model is not None:
+            apply_toxicity_model(base, advisor_msg, self.toxicity_model)
         if self.llm is None:
             self.stats["rules"] += 1
             return base
@@ -312,6 +373,8 @@ class Judge:
         out["identite_generique"] = bool(out["identite"]) and not out["identity_fields"]
         if data.get("tone") in VALID_TONES:
             out["tone"] = data["tone"]
+        if out.get("grossier"):                               # the word list is deterministic: the LLM cannot excuse it
+            out["tone"] = "rude"
         if out["resolution"] and out.get("promesse"):         # an action cannot be both done and promised
             out["promesse"] = False
         out["judge"] = "llm"

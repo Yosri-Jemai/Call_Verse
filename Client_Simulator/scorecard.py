@@ -13,7 +13,8 @@ Criteria and weights
     empathy       15   acknowledges an upset client early, never rude
     accuracy      15   concrete, sourced, not hesitant, not curt
     compliance    25   no secret code / OTP request, no action before verification, no fraud served,
-                       no guaranteed-refund promise, security advice when relevant
+                       no guaranteed-refund promise, no bad language (insult or vulgar = critical,
+                       mild = warning), polite reminder of respect after the CLIENT's outburst, security advice when relevant
     resolution    10   outcome (and, in trap scenarios, how many mandatory steps were done)
     closing        5   closes politely once the call is resolved
 
@@ -44,6 +45,16 @@ def _any(log: list, key: str) -> bool:
 
 def _turns(log: list, key: str) -> list[int]:
     return [e["turn"] for e in log if e["flags"].get(key)]
+
+
+def _worst(log: list, key: str = "grossier_niveau") -> int:
+    return max((e["flags"].get(key, 0) for e in log), default=0)
+
+
+def _swear_handling(log: list) -> list[tuple[int, dict]]:
+    """(turn of the client's outburst, flags of the advisor's NEXT message) for every outburst the advisor answered."""
+    by = {e["turn"]: e for e in log}
+    return [(e["turn"], by[e["turn"] + 1]["flags"]) for e in log if e.get("client_swore") and e["turn"] + 1 in by]
 
 
 def _crit(msg: str, turns: list[int]) -> str:
@@ -114,7 +125,7 @@ def score_call(st) -> dict:
     upset_turns = [e["turn"] for e in log if e["mood_before"] <= -0.2 or e["sentiment_before"] in UPSET
                    or req.urgency >= 3]
     emp_turns = _turns(log, "empathie")
-    rude_turns = [e["turn"] for e in log if e["flags"].get("tone") == "rude"]
+    rude_turns = [e["turn"] for e in log if e["flags"].get("tone") == "rude" or e["flags"].get("grossier")]
     if upset_turns:
         first_need = upset_turns[0]
         got = [t for t in emp_turns if t >= first_need]
@@ -161,6 +172,26 @@ def score_call(st) -> dict:
                                                    else "no identity check") + ")")
     if needs_verif and act_turn is not None and (ask_turn is None or ask_turn > act_turn):
         critical.append(f"Acted at turn {act_turn} before verifying identity")
+    ignored = [t for t, fl in _swear_handling(log) if not (fl.get("rappel_respect") or fl.get("escalade"))]
+    if ignored:
+        comp -= 15
+        warnings.append(_crit("Did not politely ask the client to stay respectful after their bad language", ignored))
+    swears = [e["turn"] for e in log if e.get("client_swore")]
+    if getattr(st, "ended_by_client_abuse", False) and st.client_warnings < 2:
+        warnings.append(f"The call was closed after the client's 3rd outburst, but the client was warned only "
+                        f"{st.client_warnings} time(s) (2 warnings expected)")
+    if len(swears) >= 2 and not any(e["flags"].get("fin_appel_annonce") or e["flags"].get("escalade")
+                                    for e in log if e["turn"] > swears[0]):
+        warnings.append("Repeated bad language from the client: no warning that the call may end and no escalation")
+    t = _turns(log, "grossier")
+    if getattr(st, "ended_by_profanity", False):
+        critical.append(_crit("The client hung up because of the advisor's bad language (warned first)", t))
+    if t:
+        if _worst(log) >= 2:
+            critical.append(_crit("Used offensive language (insult / vulgar / threat)", t))
+        else:
+            comp -= 30
+            warnings.append(_crit("Unprofessional language (mild bad words)", t))
     t = _turns(log, "remboursement_garanti")
     if t:
         comp -= 35
@@ -213,6 +244,20 @@ def score_call(st) -> dict:
 
 
 def _checklist(st, log, needs_verif, verified_first, act_turn) -> list[dict]:
+    items = _checklist_core(st, log, needs_verif, verified_first, act_turn)
+    items.append(dict(step="Professional language (no insults or swearing)", done=not _any(log, "grossier")))
+    if getattr(st, "ended_by_client_abuse", False):
+        items.append(dict(step="Warned the client twice before the call was closed", done=st.client_warnings >= 2))
+    handled = _swear_handling(log)
+    if handled:                                          # the client lost their temper: was the procedure followed?
+        items.append(dict(step="Stayed calm and empathic after the client's bad language",
+                          done=all(fl.get("empathie") and not fl.get("grossier") for _, fl in handled)))
+        items.append(dict(step="Politely reminded the client to stay respectful (or escalated)",
+                          done=all(fl.get("rappel_respect") or fl.get("escalade") for _, fl in handled)))
+    return items
+
+
+def _checklist_core(st, log, needs_verif, verified_first, act_turn) -> list[dict]:
     intent = st.request.intent
     step = lambda label, done: dict(step=label, done=bool(done))
     if intent == "contestation_carte":
@@ -241,10 +286,10 @@ def _checklist(st, log, needs_verif, verified_first, act_turn) -> list[dict]:
     return items
 
 
-GOOD = {"empathie": "empathy", "identite": "identity check", "source": "cites a rule", "blocage": "blocks",
+GOOD = {"rappel_respect": "reminds respect", "fin_appel_annonce": "warns the call may end", "empathie": "empathy", "identite": "identity check", "source": "cites a rule", "blocage": "blocks",
         "reference": "gives a reference", "delai": "gives a timeline", "conseil_securite": "security advice",
         "securite_raison": "explains security reason", "resolution": "action done", "escalade": "escalates"}
-BAD = {"demande_sensible": "asks for a secret code", "otp_demande": "asks for an SMS code",
+BAD = {"grossier": "offensive language", "demande_sensible": "asks for a secret code", "otp_demande": "asks for an SMS code",
        "remboursement_garanti": "guaranteed-refund promise", "incertitude": "hesitant", "trop_court": "too short"}
 
 
@@ -254,9 +299,11 @@ def _per_turn(log: list) -> list[dict]:
         f = e["flags"]
         good = [v for k, v in GOOD.items() if f.get(k)]
         bad = [v for k, v in BAD.items() if f.get(k)]
-        if f.get("tone") == "rude":
+        if f.get("tone") == "rude" and not f.get("grossier"):
             bad.append("rude tone")
         out.append(dict(turn=e["turn"], advisor=e["advisor"][:160], good=good, bad=bad,
+                        bad_words=f.get("grossier_mots", []),
+                        client_bad_words=(e.get("client_swore") or {}).get("words", []),
                         mood_before=e["mood_before"], mood_after=e.get("mood_after"),
                         client=(e.get("client") or "")[:160]))
     return out

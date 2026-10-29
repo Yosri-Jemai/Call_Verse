@@ -9,3 +9,6 @@ openai-whisper   # advisor voice -> text (needs ffmpeg installed)
 # torch
 # accelerate
 # bitsandbytes     # only with DERJA_4BIT=1
+# ML bad-words / toxicity model (toxicity_model.py, "toxicity_model": "auto" in the API); downloads ~2 GB on first use
+# transformers
+# torch

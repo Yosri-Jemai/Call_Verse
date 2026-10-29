@@ -24,7 +24,20 @@ export type Scorecard = {
   critical_failures: string[];
   warnings: string[];
   checklist: { step: string; done: boolean }[];
-  per_turn: { turn: number; advisor: string; good: string[]; bad: string[]; client: string }[];
+  per_turn: { turn: number; advisor: string; good: string[]; bad: string[]; bad_words?: string[]; client_bad_words?: string[]; client: string }[];
+};
+
+export type Moderation = {
+  count: number; // advisor messages with bad words so far
+  points: number; // sum of their levels (1 mild, 2 vulgar, 3 severe)
+  ended?: boolean; // the client hung up because of the advisor's bad language
+  strikes_left?: number; // offences left before the client hangs up
+  warnings_max?: number | null; // warnings the advisor gets before the call ends (2); null = the call is never ended
+  client_warnings?: number; // reminders of respect the advisor gave to the client
+  client_abuse_ended?: boolean; // the call was closed after the client's 3rd outburst
+  client_swears?: number; // times the CLIENT lost patience and swore
+  client_swore_last?: boolean; // the client's last reply contained bad words
+  last: { level: number; level_name: string; words: string[]; categories: string[] } | null; // last message only
 };
 
 export type CallState = {
@@ -49,6 +62,7 @@ export type CallState = {
   history: Turn[];
   summary: CallSummary | null;
   scorecard?: Scorecard | null;
+  moderation?: Moderation;
   engine?: {
     mode: "rules" | "llm" | "mixed" | "llm_failed";
     backend: string;

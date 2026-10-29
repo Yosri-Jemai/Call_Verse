@@ -31,6 +31,7 @@ from enum import Enum
 from typing import Callable, Optional
 
 import banks
+from profanity import scan as scan_profanity
 from judge import Judge, rule_analyse as analyse      # `analyse` kept for backward compatibility
 from llm_backends import extract_json
 from memory import is_repeat, memory_block
@@ -387,7 +388,7 @@ class ConversationState:
     identity_verified: bool = False   # True when what the client said matches the CRM (>= 2 facts, none wrong)
     resolved: bool = False
     escalated: bool = False
-    status: str = "active"       # active|resolved|escalated|abandoned|hung_up|max_turns|closed
+    status: str = "active"       # active|resolved|escalated|abandoned|hung_up|max_turns|closed (closed also = ended after the client's 3rd outburst)
     emotion: str = "neutre"
     sentiment: str = "neutral"   # behavioural state flag: calm, in_a_rush, stressed, violent...
     mood_trace: list = field(default_factory=list)
@@ -397,6 +398,14 @@ class ConversationState:
     wrong_claims: int = 0
     verification_asked: bool = False
     sensitive_requests: int = 0       # times the advisor asked for a secret code / password
+    profanity_count: int = 0          # advisor messages that contained bad words (profanity.py)
+    profanity_points: int = 0         # sum of their levels (1 mild, 2 vulgar, 3 severe)
+    ended_by_profanity: bool = False  # the client hung up because of the advisor's bad language
+    client_warnings: int = 0          # polite reminders of respect the advisor gave after the client's outbursts
+    ended_by_client_abuse: bool = False  # the call was closed after the client swore a 3rd time
+    client_swears: int = 0            # times the CLIENT lost patience and swore
+    last_swear_turn: int = -99
+    swear_pending: bool = False       # the client swore and the advisor has not handled it yet
     fraud: dict = field(default_factory=dict)          # strategy, pressure, path (fraudsters only)
     engine: Counter = field(default_factory=Counter)   # how each client turn was produced: llm / rules
     llm_error: str = ""                                # last reason the LLM was not used (empty = none)
@@ -437,6 +446,12 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 # --------------------------------------------------------------------------
 # 5. The agent
 # --------------------------------------------------------------------------
+CLIENT_SWEAR_MOOD = -0.55        # an honest client swears once the mood is at or below this
+CLIENT_SWEAR_STRIKES = 3          # the client's 3rd outburst ends the call (the advisor warned it twice)
+CLIENT_SWEAR_COOLDOWN = 2         # turns between two outbursts (1 when the advisor ignored the first one)
+PROFANITY_STRIKES = 3             # offences 1 and 2 = a warning each, the 3rd offence ends the call (2 warnings)
+
+
 class ClientSimulatorAgent:
     def __init__(self, seed: Optional[int] = None,
                  llm: Optional[Callable[[str], str]] = None,
@@ -445,7 +460,13 @@ class ClientSimulatorAgent:
                  difficulty: float = 0.0,
                  language_weights: Optional[dict] = None,
                  llm_strict: bool = False,
-                 darija_llm: Optional[Callable[[str], str]] = None):
+                 darija_llm: Optional[Callable[[str], str]] = None,
+                 profanity_hangup: bool = True,
+                 profanity_strikes: int = PROFANITY_STRIKES,
+                 toxicity_model=None,
+                 client_swears: bool = True,
+                 client_swear_turn: Optional[int] = None,
+                 client_swear_strikes: int = CLIENT_SWEAR_STRIKES):
         """
         llm        : llm(prompt)->str that plays the client (Claude, Gemini, Ollama...). None = rules only.
         judge_llm  : llm that judges the advisor's messages. None = negation-safe keyword rules.
@@ -454,18 +475,32 @@ class ClientSimulatorAgent:
         llm_strict : True = an LLM failure raises instead of silently using the rules (use it to debug).
         darija_llm : a second llm used ONLY when the client speaks Darija (llm_backends.darija_llm()).
                      None = the main `llm` also writes the Darija lines.
+        profanity_hangup : True = the client warns the advisor at the first offence and hangs up at the
+                     `profanity_strikes`-th one (default 2; 1 = hang up at once). False = the bad words are only
+                     detected, penalised in the mood and the scorecard, and the call goes on.
+        client_swears : True = an honest client who gets angry swears (see `_should_swear`), so you can check the
+                     advisor's de-escalation. False = the client never swears.
+        client_swear_turn : abusive client: swears from this advisor turn on (e.g. 3), whatever the mood, with the
+                     usual pause between two outbursts (and none when the advisor ignored the last one).
+        client_swear_strikes : the client's N-th outburst ends the call (default 3 = the advisor gave 2 warnings).
+        toxicity_model : optional ML model (toxicity_model.load_toxicity_model()) used on top of the word list.
         """
         self.rng = random.Random(seed)
         self.llm = llm
         self.darija_llm = darija_llm
         self.max_turns = max_turns
-        self.judge = Judge(judge_llm)
+        self.judge = Judge(judge_llm, toxicity_model)
         self.difficulty = difficulty
         self.language_weights = language_weights or DEFAULT_LANGUAGE_WEIGHTS
         self.crm: dict[str, dict] = {}              # client_id -> CRM record (synthetic)
         self.incidents: list[Incident] = []         # incidents of the last generated workload
         self.stats: Counter = Counter()
         self.llm_strict = llm_strict
+        self.profanity_hangup = profanity_hangup
+        self.profanity_strikes = max(1, int(profanity_strikes))
+        self.client_swears = client_swears
+        self.client_swear_turn = client_swear_turn
+        self.client_swear_strikes = max(1, int(client_swear_strikes))
         self.llm_errors: list[str] = []             # most recent LLM failures (max 10)
 
     def _has_llm(self, req: "ClientRequest") -> bool:
@@ -660,9 +695,16 @@ class ClientSimulatorAgent:
         if f["identite"]:
             st.verification_asked = True
         st.sensitive_requests += int(f["demande_sensible"])
+        lvl = f.get("grossier_niveau", 0)
+        if lvl:
+            st.profanity_count += 1
+            st.profanity_points += lvl
         self._update_mood(st, f)
         self._update_fraud_pressure(st, f)
-        if f["escalade"]:
+        self._react_to_deescalation(st, f)
+        if lvl and self.profanity_hangup and st.profanity_count >= self.profanity_strikes:
+            st.status, st.ended_by_profanity = "hung_up", True   # warned once, offended again: the call ends
+        elif f["escalade"]:
             st.escalated, st.status = True, "escalated"
         elif f["resolution"]:
             # The advisor says the action is done. If the caller is a fraudster the attack succeeded
@@ -673,8 +715,36 @@ class ClientSimulatorAgent:
         elif st.turn >= self.max_turns:
             st.status = "max_turns"
 
+    def _react_to_deescalation(self, st: ConversationState, f: dict) -> None:
+        """After an outburst of the client: calm + empathy + a polite reminder of respect brings the client
+        back (mood up, outburst closed); ignoring it leaves the door open for another one."""
+        if f.get("rappel_respect") and st.client_warnings < st.client_swears and not f.get("grossier_niveau"):
+            st.client_warnings += 1                  # one warning per outburst
+        if not st.swear_pending or f.get("grossier_niveau"):
+            return
+        if f.get("rappel_respect") or f.get("escalade"):
+            st.mood = _clamp(st.mood + 0.12, -1.0, 1.0)
+        if (f.get("rappel_respect") or f.get("escalade")) and (f.get("empathie") or f.get("escalade")):
+            st.swear_pending = False
+            st.last_swear_turn = st.turn                 # cooldown restarts: the client has calmed down
+
+    def _should_swear(self, st: ConversationState) -> bool:
+        """The angry client swears: from `client_swear_turn` on when it is set, otherwise when the mood is at or
+        below CLIENT_SWEAR_MOOD (from turn 2). Honest clients only (a fraudster stays smooth)."""
+        if not self.client_swears or st.request.is_fraudster or st.status != "active":
+            return False
+        if st.client_swears >= self.client_swear_strikes:
+            return False
+        if st.turn - st.last_swear_turn < (1 if st.swear_pending else CLIENT_SWEAR_COOLDOWN):
+            return False
+        if self.client_swear_turn is not None:
+            return st.turn >= self.client_swear_turn         # abusive client, whatever the mood
+        return st.turn >= 2 and st.mood <= CLIENT_SWEAR_MOOD
+
     # ---- phase 3: speak (LLM first, rules as safety net) + CRM verification -----
     def speak(self, st: ConversationState, f: dict) -> str:
+        swear = self._should_swear(st)
+        f["client_swear"] = swear                   # read by the prompts and the rule bank
         text, adjust, hang_up, emotion = self._client_turn(st, f)
         self._verify_claims(st, text)               # what the client just said is checked against the CRM, in code
         st.mood = _clamp(st.mood + adjust, -1.0, 1.0)
@@ -687,6 +757,15 @@ class ClientSimulatorAgent:
         if st.turn_log:
             st.turn_log[-1]["mood_after"] = round(st.mood, 3)
             st.turn_log[-1]["client"] = text
+        if swear:
+            r = scan_profanity(text)
+            if r["found"]:                          # counted only if the client really swore
+                st.client_swears += 1
+                st.last_swear_turn, st.swear_pending = st.turn, True
+                if st.turn_log:
+                    st.turn_log[-1]["client_swore"] = {"level": r["level"], "words": r["words"]}
+                if st.client_swears >= self.client_swear_strikes and st.status == "active":
+                    st.status, st.ended_by_client_abuse = "closed", True    # two warnings were enough: the call is over
         return text
 
     def run_conversation(self, req: ClientRequest, advisor_fn: Callable[[AdvisorView], str],
@@ -710,6 +789,8 @@ class ClientSimulatorAgent:
         if f["trop_court"]:   d -= 0.10
         if f["tone"] == "rude":
             d -= 0.25
+        if f.get("grossier_niveau"):
+            d -= 0.10 * f["grossier_niveau"]            # on top of "rude": 1 mild .. 3 severe
         elif f["tone"] == "polite":
             d += 0.03
         if f["identite"] and tone == "pressant":
@@ -897,7 +978,18 @@ class ClientSimulatorAgent:
         else:
             who = ("Ma t3ti 7atta ma3louma shakhsiya tawa, ken el conseiller ma talabhech. "
                    "Ken talablek code secret, mot de passe walla CVV: erfodh.")
-        status_note = {"resolved": "El mochkla t7allet: chkor el conseiller w khallas el mokalma.\n",
+        offended = ((("El conseiller 3awed 9alla 3lik el adab ba3d el avertissement: 9olou bel wodhou7 inek tsakker "
+                      "3la jal el kalam hedha w tna3mel réclamation.\n")
+                     if st.ended_by_profanity else
+                     (f"El conseiller tawa se3bek walla 9alla 3lik el adab: a3tih el avertissement "
+                      f"{st.profanity_count}/{self.profanity_strikes - 1} wadhe7 w 9awi "
+                      + ("(hedha el AKHIR: kan 3awadha tsakker) " if st.profanity_count >= self.profanity_strikes - 1 else "")
+                      + "('raddi belek 3la kalmetek, kan 3awadtha nsakker'), bla ma tse3bou.\n"))
+                    if f.get("grossier") else "")
+        swear_note = ("Inti ghadhbén barcha : fi el réplique hedhi 9oul klima walla zouz kalimet khchinin (ma3a 'khra', "
+                      "'yel3an', 'hedhi khra') 3la el wad3 walla el khidma ta3 el banka, bla tahdid w bla chatm 3onsori.\n"
+                      if f.get("client_swear") else "")
+        status_note = offended + swear_note + {"resolved": "El mochkla t7allet: chkor el conseiller w khallas el mokalma.\n",
                        "escalated": "El conseiller 7awelek l responsable: 9oul rayek fel 7awel.\n",
                        "hung_up": "Inti taabt: 9oul inek bech tsakker el khat.\n"}.get(st.status, "")
         hist = "\n".join(f"{'CONSEILLER' if w == 'conseiller' else 'MOI (client)'}: {t}" for w, t in st.history)
@@ -938,7 +1030,19 @@ class ClientSimulatorAgent:
                    f"conseiller les demande) : date de naissance {t['birth_date']}, 4 derniers chiffres de ta "
                    f"carte {t['card_last4']}, téléphone {t['phone']}. Un conseiller honnête ne te demande jamais "
                    f"ton code secret, mot de passe ou CVV : si on te les demande, refuse.")
-        status_note = {"resolved": "La demande vient d'être résolue : remercie et conclus.\n",
+        offended = ((("Le conseiller a RECOMMENCÉ à être grossier malgré ton avertissement : dis-lui clairement que tu "
+                      "raccroches à cause de son langage et que tu déposes une réclamation.\n")
+                     if st.ended_by_profanity else
+                     (f"Le conseiller vient d'être grossier ou insultant envers toi : donne-lui l'AVERTISSEMENT "
+                      f"n°{st.profanity_count}/{self.profanity_strikes - 1}"
+                      + (" (le DERNIER : au prochain écart tu raccroches)" if st.profanity_count >= self.profanity_strikes - 1 else "")
+                      + ", de façon claire et ferme (« surveillez votre langage, si vous recommencez je raccroche »), "
+                        "sans l'insulter en retour.\n"))
+                    if f.get("grossier") else "")
+        swear_note = ("Tu es à bout de nerfs : dans CETTE réplique, lâche un ou deux gros mots (ex : « putain », « merde », "
+                      "« c'est de la merde ») contre la situation ou le service de la banque, comme un vrai client furieux. "
+                      "Pas de menace, pas de propos raciste ou sexiste, et reste un CLIENT.\n" if f.get("client_swear") else "")
+        status_note = offended + swear_note + {"resolved": "La demande vient d'être résolue : remercie et conclus.\n",
                        "escalated": "Le conseiller te transfère à un responsable : réagis à ce transfert.\n",
                        "hung_up": "Tu es à bout : annonce que tu raccroches.\n"}.get(st.status, "")
         labels = {"conseiller": "CONSEILLER", "client": "MOI (le client)"}
@@ -993,7 +1097,12 @@ class ClientSimulatorAgent:
         if st.status == "escalated":
             return banks.ESCALATED[lang]
         if st.status == "hung_up":
-            return banks.HUNG_UP[lang]
+            return (banks.HUNG_UP_INSULT if st.ended_by_profanity else banks.HUNG_UP)[lang]
+        if f.get("grossier") and not req.is_fraudster:
+            return banks.OFFENDED[lang][min(st.profanity_count, len(banks.OFFENDED[lang])) - 1]   # warning 1, then the last one
+        if f.get("client_swear") and not req.is_fraudster:
+            said = {t for who, t in st.history if who == "client"}      # never the same outburst twice (the repeat guard would soften it)
+            return self.rng.choice([l for l in banks.ANGRY_SWEAR[lang] if l not in said] or banks.ANGRY_SWEAR[lang])
         if req.is_fraudster:
             return self._fraud_text(st, f, lang)
         # ---- honest client
@@ -1044,6 +1153,10 @@ class ClientSimulatorAgent:
                     abandoned=st.status == "abandoned",
                     identity_verified=st.identity_verified, verification_asked=st.verification_asked,
                     wrong_claims=st.wrong_claims, sensitive_requests=st.sensitive_requests,
+                    profanity_count=st.profanity_count, profanity_points=st.profanity_points,
+                    ended_by_profanity=st.ended_by_profanity, client_warnings=st.client_warnings,
+                    ended_by_client_abuse=st.ended_by_client_abuse,
+                    client_swears=st.client_swears,
                     final_emotion=st.emotion, final_mood=round(st.mood, 3), final_sentiment=st.sentiment,
                     mood_trace=list(st.mood_trace), engine=dict(st.engine), llm_error=st.llm_error,
                     repeats=st.repeats, **_qa_summary(st))

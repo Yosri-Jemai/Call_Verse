@@ -52,3 +52,6 @@ rag = [
     "chromadb>=1.0",
     "sentence-transformers>=3.4",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

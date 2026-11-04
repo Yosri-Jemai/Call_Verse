@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.agent.graph import create_agent
 from src.agent.policy_rag import get_embeddings
+from src.auth.router import router as auth_router
 from src.config import settings
 from src.db.connection import get_connection
 from src.stt.transcriber import transcribe_audio_file
@@ -135,7 +136,8 @@ app = FastAPI(
     title="Cashy Agent API",
     description=(
         "Local development API for the Cashy banking-support agent. "
-        "This prototype has no caller authentication or customer-level authorization."
+        "Administrator authentication is available; authorization is still being "
+        "applied incrementally to the remaining application routes."
     ),
     lifespan=lifespan,
 )
@@ -147,8 +149,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+app.include_router(auth_router)
 app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
 
 

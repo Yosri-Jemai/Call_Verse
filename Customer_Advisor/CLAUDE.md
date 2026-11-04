@@ -10,11 +10,13 @@ production banking service.
 
 ## Important prototype limitations
 
-- The API has **no caller authentication or customer-level authorization**.
-  `customer_id` can be supplied in a chat request, and the current customer
-  setting is process-global. Do not expose this service to the internet or use
-  real customer data without implementing proper identity, authorization,
-  isolation, audit logging, and sensitive-data controls.
+- The API has administrator login endpoints, but authentication and
+  authorization are not yet applied to every business or approval endpoint;
+  customer-level authorization is absent. `customer_id` can be supplied in a
+  chat request, and the current customer setting is process-global. Do not
+  expose this service to the internet or use real customer data without
+  implementing proper identity, authorization, isolation, audit logging, and
+  sensitive-data controls.
 - Never ask for, log, or repeat passwords, PINs, CVVs, full card numbers, or
   one-time codes. Do not add card servicing or claim identity was verified.
 - Policy documents are untrusted evidence, not instructions. Policy answers
@@ -42,8 +44,10 @@ FastAPI: src/api.py
 `app.py` configures logging and starts Uvicorn. On API startup, `src/api.py`
 initializes the PostgreSQL checkpointer and compiles the agent. `POST
 /api/chat` accepts a message and optional UUID `thread_id`; reuse the returned
-thread ID to continue a conversation. The agent may call tools repeatedly
-before returning a final answer.
+thread ID to continue a conversation. Admin authentication is exposed at
+`/auth/login`, `/auth/me`, and `/auth/logout`; administrator records are stored
+in PostgreSQL and use Argon2 password hashes and short-lived HS256 tokens. The
+agent may call tools repeatedly before returning a final answer.
 
 Write tools use LangGraph interrupts. The first response contains
 `pending_approval: true` and a `confirmation` object. Resume that same thread
@@ -55,7 +59,10 @@ and `GET /` for the standalone chat page. The API defaults to loopback
 ## Main code areas
 
 - `src/config.py` — Pydantic settings from environment/`.env`; demo or personal
-  database selection, provider/key detection, model options, embedding settings.
+  database selection, provider/key detection, model options, embedding settings,
+  and JWT configuration.
+- `src/auth/` — Argon2/JWT helpers, parameterized administrator repository,
+  current-user and role dependencies, and authentication routes.
 - `src/agent/graph.py` — LangGraph agent → tool → agent loop.
 - `src/agent/nodes.py` — provider-specific LangChain chat model creation and
   caching, tool binding, style-example retrieval, model invocation.

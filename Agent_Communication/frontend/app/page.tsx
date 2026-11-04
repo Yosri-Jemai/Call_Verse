@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const CLIENT_API = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://127.0.0.1:8001";
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
 
 type Role = "client" | "conseiller";
 type Message = { role: Role; text: string };
@@ -67,6 +67,9 @@ const scenarioIcons: Record<string, string> = {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -127,6 +130,7 @@ export default function Home() {
   const [autoplay, setAutoplay] = useState(true);
   const [advisorOnline, setAdvisorOnline] = useState(false);
   const [clientOnline, setClientOnline] = useState(false);
+  const [userRole, setUserRole] = useState<"approver" | "viewer" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [safetyNote, setSafetyNote] = useState("");
@@ -141,7 +145,13 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    if (new URLSearchParams(window.location.search).get("denied") === "approver") {
+      setError("Cette page est réservée aux comptes avec le rôle approver.");
+    }
     void Promise.all([
+      requestJson<{ user: { role: "approver" | "viewer" } }>("/api/auth/me")
+        .then(({ user }) => active && setUserRole(user.role))
+        .catch(() => active && window.location.assign("/login")),
       requestJson<{ status: string }>(`${ADVISOR_API}/health`).then(() => active && setAdvisorOnline(true)).catch(() => active && setAdvisorOnline(false)),
       requestJson<{ ok: boolean }>(`${CLIENT_API}/api/health`).then(() => active && setClientOnline(true)).catch(() => active && setClientOnline(false)),
       requestJson<Scenario[]>(`${CLIENT_API}/api/scenarios`).then((items) => active && setScenarios(items)).catch(() => undefined),
@@ -482,9 +492,21 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-              Admin inbox{approvalRequest ? " · 1" : ""}
-            </Link>
+            {userRole === "approver" && (
+              <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+                Admin inbox{approvalRequest ? " · 1" : ""}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] transition hover:bg-white hover:text-forest"
+            >
+              Sign out
+            </button>
             <div className="hidden items-center gap-2 rounded-full border border-[#e6ebe5] bg-white px-3 py-2 text-xs font-medium text-[#68756d] sm:flex">
               <span className="relative flex h-2 w-2">
                 <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${advisorOnline && clientOnline ? "animate-ping bg-emerald-500" : "bg-rose-400"}`} />

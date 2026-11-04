@@ -1,4 +1,6 @@
 import json
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 from evaluation.evaluate_policy_quality import (
@@ -9,6 +11,8 @@ from evaluation.evaluate_policy_quality import (
     score_answer,
     score_retrieval,
 )
+from evaluation.evaluate_ragchecker import build_ragchecker_input, load_pilot
+from evaluation.ragchecker_worker import _groq_llm_callback
 
 
 def test_evaluation_dataset_is_labeled_and_has_answerable_and_unanswerable_cases():
@@ -183,3 +187,66 @@ def test_model_evaluation_executes_only_policy_search(monkeypatch):
     assert result["answer"] == "The limit is 100 TND per transaction."
     assert result["tool_call_count"] == 1
     assert result["blocked_tool_calls"] == []
+
+
+def test_ragchecker_pilot_has_four_reviewed_answerable_cases():
+    cases = load_pilot(
+        Path(__file__).parents[1] / "evaluation" / "ragchecker_pilot.jsonl",
+        DEFAULT_DATASET,
+    )
+
+    assert len(cases) == 4
+    assert all(case["answerable"] and case["gt_answer"] for case in cases)
+
+
+def test_ragchecker_input_uses_retrieved_passages_and_reviewed_answers():
+    cases = [
+        {
+            "id": "contactless-fr",
+            "question": "Quel est le plafond ?",
+            "gt_answer": "100 TND.",
+        }
+    ]
+    retrieval_results = [
+        {
+            "id": "contactless-fr",
+            "documents": [
+                {
+                    "source": "Policy",
+                    "title": "Contactless",
+                    "text": "Maximum 100 TND.",
+                }
+            ],
+        }
+    ]
+
+    payload = build_ragchecker_input(cases, retrieval_results)
+
+    assert payload["results"] == [
+        {
+            "query_id": "contactless-fr",
+            "query": "Quel est le plafond ?",
+            "gt_answer": "100 TND.",
+            "response": "",
+            "retrieved_context": [
+                {"doc_id": "Policy::Contactless", "text": "Maximum 100 TND."}
+            ],
+        }
+    ]
+
+
+def test_ragchecker_callback_uses_bounded_provider_retries(monkeypatch):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="checked"))]
+        )
+
+    monkeypatch.setitem(sys.modules, "litellm", SimpleNamespace(completion=completion))
+    monkeypatch.setenv("RAGCHECKER_MODEL", "groq/openai/gpt-oss-120b")
+
+    assert _groq_llm_callback(["prompt"]) == ["checked"]
+    assert calls[0]["num_retries"] == 5
+    assert calls[0]["retry_strategy"] == "exponential_backoff_retry"

@@ -23,11 +23,12 @@ type AdvisorResponse = {
   thread_id: string;
   message?: string | null;
   pending_approval: boolean;
-  confirmation?: { message?: string; details?: Record<string, unknown> } | null;
+  confirmation?: { message?: string; admin_message?: string; details?: Record<string, unknown> } | null;
 };
 type ApprovalRequest = {
   id: string;
   threadId: string;
+  message: string;
 };
 type RunMode = "autopilot" | "manual";
 type SpeechEngine = "advisor" | "client";
@@ -38,6 +39,9 @@ const defaultScenarios: Scenario[] = [
   { name: "panne", description: "A card or banking service outage" },
   { name: "campagne", description: "A seasonal campaign inquiry" },
   { name: "vague_de_fraude", description: "A suspected wave of fraud" },
+  { name: "blocage_compte", description: "A deterministic bank-account block request requiring admin approval" },
+  { name: "enregistrement_depense", description: "A deterministic expense-record request requiring admin approval" },
+  { name: "nouveau_client_politique", description: "A new client asks about a bank policy; Redis cache is verified before the call" },
   { name: "contestation_carte", description: "A disputed card transaction" },
   { name: "vishing_otp", description: "A caller pressured to share an OTP" },
   { name: "virement_sans_verification", description: "A rushed transfer with skipped checks" },
@@ -49,6 +53,9 @@ const scenarioNames: Record<string, string> = {
   panne: "Service outage",
   campagne: "Campaign inquiry",
   vague_de_fraude: "Fraud wave",
+  blocage_compte: "Account block · admin approval",
+  enregistrement_depense: "Record expense · admin approval",
+  nouveau_client_politique: "New client · policy question + Redis test",
   contestation_carte: "Card dispute",
   vishing_otp: "Vishing · OTP",
   virement_sans_verification: "Unverified transfer",
@@ -60,6 +67,7 @@ const scenarioIcons: Record<string, string> = {
   panne: "⌁",
   campagne: "✳",
   vague_de_fraude: "⌑",
+  blocage_compte: "⊘",
   contestation_carte: "▣",
   vishing_otp: "⌁",
   virement_sans_verification: "↗",
@@ -189,7 +197,11 @@ export default function Home() {
         },
       );
       return {
-        approval: { id: queued.id, threadId: queued.thread_id },
+        approval: {
+          id: queued.id,
+          threadId: queued.thread_id,
+          message: response.message?.trim() || "I’ve sent this request for specialist review. It has not been carried out.",
+        },
       };
     }
     if (!response.message?.trim()) throw new Error("The Customer Advisor returned no reply.");
@@ -216,17 +228,28 @@ export default function Home() {
         language,
         difficulty,
         llm: clientEngine,
-        max_turns: 8,
+        max_turns: scenario === "nouveau_client_politique" ? 2 : 8,
         ...(seed.trim() ? { seed: Number(seed) } : {}),
       };
       if (seed.trim() && !Number.isInteger(Number(seed))) throw new Error("Seed must be a whole number.");
+      let cacheNotice = "";
+      if (scenario === "nouveau_client_politique") {
+        const cacheTest = await requestJson<{ cached: boolean; cache_hit_verified: boolean }>(
+          `${ADVISOR_API}/api/dev/redis-cache-test`,
+          { method: "POST" },
+        );
+        if (!cacheTest.cached || !cacheTest.cache_hit_verified) {
+          throw new Error("Redis did not confirm a cached policy lookup. Check that Redis and the policy index are available.");
+        }
+        cacheNotice = "Redis policy result cached; repeat lookup verified.";
+      }
       const started = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       setCall(started);
-      setNotice(`Session ${started.call_id} · ${started.client.name} joined`);
+      setNotice([`Session ${started.call_id} · ${started.client.name} joined`, cacheNotice].filter(Boolean).join(" · "));
       const opening = [...started.history].reverse().find((message) => message.role === "client");
       if (autoplayRef.current && opening) await playIfEnabled(opening, started.client);
       if (mode === "autopilot") {
@@ -275,7 +298,11 @@ export default function Home() {
     }
   }
 
-  async function advanceSimulation(current: CallSnapshot, advisorText: string): Promise<CallSnapshot> {
+  async function advanceSimulation(
+    current: CallSnapshot,
+    advisorText: string,
+    pendingMessages: Message[] = [],
+  ): Promise<CallSnapshot> {
     const advisorMessage: Message = { role: "conseiller", text: advisorText };
     setCall((previous) => previous ? { ...previous, history: [...previous.history, advisorMessage] } : previous);
     await playIfEnabled(advisorMessage, current.client);
@@ -284,10 +311,36 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: advisorText }),
     });
-    setCall(updated);
-    const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
-    if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
-    return updated;
+    const history = [...updated.history];
+    const pendingNotInSimulator = pendingMessages.filter(
+      (pending) => !history.some((message) => message.role === pending.role && message.text === pending.text),
+    );
+    if (pendingNotInSimulator.length) {
+      let advisorReplyIndex = -1;
+      for (let index = history.length - 1; index >= 0; index -= 1) {
+        if (history[index].role === advisorMessage.role && history[index].text === advisorText) {
+          advisorReplyIndex = index;
+          break;
+        }
+      }
+      history.splice(advisorReplyIndex < 0 ? history.length : advisorReplyIndex, 0, ...pendingNotInSimulator);
+    }
+    const withPendingMessages = { ...updated, history };
+    setCall(withPendingMessages);
+    const clientReply = [...withPendingMessages.history].reverse().find((message) => message.role === "client");
+    if (clientReply && withPendingMessages.status === "active") await playIfEnabled(clientReply, withPendingMessages.client);
+    return withPendingMessages;
+  }
+
+  async function showPendingAdvisorMessage(current: CallSnapshot, text: string): Promise<CallSnapshot> {
+    const paused = {
+      ...current,
+      history: [...current.history, { role: "conseiller" as const, text }],
+    };
+    callRef.current = paused;
+    setCall(paused);
+    await playIfEnabled({ role: "conseiller", text }, current.client);
+    return paused;
   }
 
   async function runAutopilot(initialCall: CallSnapshot, initialThread: string | null) {
@@ -299,9 +352,10 @@ export default function Home() {
       if (!latestClient) throw new Error("The simulator did not provide a customer message.");
       const advisor = await sendToAdvisor(latestClient.text, currentThread);
       if ("approval" in advisor) {
+        await showPendingAdvisorMessage(current, advisor.approval.message);
         setThreadId(advisor.approval.threadId);
         setApprovalRequest(advisor.approval);
-        setSafetyNote("The advisor sent this financial action to the admin approval inbox. The conversation is paused.");
+        setSafetyNote("The request is saved in the specialist review inbox. The conversation is paused until it is reviewed.");
         return;
       }
       currentThread = advisor.thread;
@@ -391,7 +445,13 @@ export default function Home() {
         setBusy(true);
         setAutopilot(true);
         try {
-          const updated = await advanceSimulation(pausedCall, request.result.message.trim());
+          const lastPausedMessage = pausedCall.history[pausedCall.history.length - 1];
+          const pendingMessages = lastPausedMessage?.role === "conseiller" ? [lastPausedMessage] : [];
+          const updated = await advanceSimulation(
+            pausedCall,
+            request.result.message.trim(),
+            pendingMessages,
+          );
           await runAutopilot(updated, request.result.thread_id || approvalRequest.threadId);
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : "The conversation could not continue after review.");

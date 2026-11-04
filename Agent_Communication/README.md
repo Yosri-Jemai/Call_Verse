@@ -70,8 +70,30 @@ The inbox shows why the advisor requested the action and its proposed details;
 an administrator must approve or decline before the paused conversation resumes.
 Requests are stored in the Customer Advisor PostgreSQL database and survive
 dashboard reloads. The advisor can update only the active customer's name and
-email when explicitly requested. Manual mode lets you write or dictate an advisor
+email when explicitly requested. The deterministic `blocage_compte` scenario
+always asks to block a bank account; the advisor queues this high-impact action
+for review, and approval marks that account inactive in PostgreSQL. This is an
+account block, not a card block. Manual mode lets you write or dictate an advisor
 response.
+
+The deterministic `enregistrement_depense` scenario exercises a proposed $42
+grocery ledger entry and sends it through the existing transaction approval gate.
+The deterministic `nouveau_client_politique` scenario always creates a new client
+asking about the contactless-payment limit. Before starting the call, the
+dashboard runs the Customer Advisor's fixed policy query twice through the normal
+Redis-backed search path and verifies that the second lookup is served from cache.
+The scenario requires Redis to be enabled and the matching policy collection to
+be ingested; otherwise it reports an error instead of implying the cache test
+succeeded.
+Card disputes, card blocking, transfer requests, and similar services unsupported
+by the demo database can be escalated as `manual_service_review`. Approving one
+authorizes manual follow-up only; it does not perform that bank operation or
+modify PostgreSQL. Transaction create/update/delete and account blocking remain
+the only consequential actions implemented as PostgreSQL mutations after approval.
+When an action pauses for approval, the advisor's customer-facing specialist-review
+message appears in the conversation first; its concise operation summary is sent
+separately to the inbox. Requests that bypass verification or involve credentials
+can be marked review-only: they cannot be approved for execution.
 
 The admin page is a local-demo page and does not have sign-in or role-based
 access control. Do not expose it or the APIs on a public network.

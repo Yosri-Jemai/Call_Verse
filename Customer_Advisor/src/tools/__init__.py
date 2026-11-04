@@ -8,6 +8,8 @@ from src.tools.update_transaction import update_transaction
 from src.tools.delete_transaction import delete_transaction
 from src.tools.generate_chart import generate_chart
 from src.tools.bank_policy_search import search_bank_policies
+from src.tools.block_account import block_account
+from src.tools.request_manual_service_review import request_manual_service_review
 from src.tools.update_customer_profile import update_customer_profile
 
 all_tools = [
@@ -21,5 +23,7 @@ all_tools = [
     delete_transaction,
     generate_chart,
     search_bank_policies,
+    block_account,
+    request_manual_service_review,
     update_customer_profile,
 ]

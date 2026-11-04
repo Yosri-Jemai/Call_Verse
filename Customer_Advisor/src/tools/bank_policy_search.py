@@ -61,7 +61,7 @@ def _search_policy(query: str, category: str | None = None) -> dict:
         get_embeddings(),
         category=category,
     )
-    cache.set(cache_key, result, settings.redis_policy_cache_ttl_seconds)
+    cache.set(cache_key, result)
     return result
 
 

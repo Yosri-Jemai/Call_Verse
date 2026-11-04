@@ -1,0 +1,1950 @@
+{
+  "created_at": "2026-11-04T22:00:04Z",
+  "dataset": "evaluation\\policy_qa.jsonl",
+  "index": "bank_policies",
+  "index_chunk_count": 123,
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "configured_threshold": 0.55,
+  "k_values": [
+    1,
+    2,
+    4
+  ],
+  "retrieval_by_threshold": [
+    {
+      "threshold": 0.45,
+      "metrics": {
+        "case_count": 26,
+        "answerable_count": 22,
+        "unanswerable_count": 4,
+        "recall_at_k": {
+          "1": 0.9545,
+          "2": 0.9545,
+          "4": 0.9545
+        },
+        "mrr": 0.9545,
+        "answerable_retrieval_rate": 0.9545,
+        "unanswerable_false_positive_rate": 1.0,
+        "unanswerable_rejection_rate": 0.0,
+        "median_retrieval_latency_seconds": 0.0161,
+        "p95_retrieval_latency_seconds": 0.0219
+      },
+      "cases": [
+        {
+          "id": "contactless-fr",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8914
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8713
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8414
+            }
+          ]
+        },
+        {
+          "id": "contactless-en",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8534
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8356
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8089
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8013
+            }
+          ]
+        },
+        {
+          "id": "contactless-darija",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.836
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8248
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.7981
+            },
+            {
+              "title": "Blocage de l'accès après des erreurs de connexion",
+              "similarity_score": 0.7981
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-daily",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.9147
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.9145
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8586
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.8584
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-weekly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8395
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8088
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8058
+            }
+          ]
+        },
+        {
+          "id": "classic-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8695
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8661
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8327
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.801
+            }
+          ]
+        },
+        {
+          "id": "gold-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.9117
+            },
+            {
+              "title": "Plafonds de la carte Gold",
+              "similarity_score": 0.9045
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.9019
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-essential",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8305
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8279
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-premium",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8555
+            },
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-limit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8113
+            },
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.7956
+            },
+            {
+              "title": "Découvert autorisé maximum",
+              "similarity_score": 0.7857
+            },
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.7799
+            }
+          ]
+        },
+        {
+          "id": "essential-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            }
+          ]
+        },
+        {
+          "id": "essential-young-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Offre de bienvenue : 3 mois de tenue de compte offerts",
+              "similarity_score": 0.826
+            },
+            {
+              "title": "Paiement de factures dans l'application",
+              "similarity_score": 0.8204
+            }
+          ]
+        },
+        {
+          "id": "premium-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            }
+          ]
+        },
+        {
+          "id": "cashy-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            }
+          ]
+        },
+        {
+          "id": "other-tunisia-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8504
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8447
+            }
+          ]
+        },
+        {
+          "id": "foreign-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8114
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8101
+            }
+          ]
+        },
+        {
+          "id": "domestic-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8956
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8926
+            },
+            {
+              "title": "Délais des virements",
+              "similarity_score": 0.8496
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.836
+            }
+          ]
+        },
+        {
+          "id": "opening-age",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8709
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8628
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8547
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8486
+            }
+          ]
+        },
+        {
+          "id": "opening-deposit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Gratuité du compte Essentiel pour les moins de 26 ans",
+              "similarity_score": 0.8834
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8553
+            }
+          ]
+        },
+        {
+          "id": "branch-hours",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8708
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8351
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8319
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8195
+            }
+          ]
+        },
+        {
+          "id": "transfer-cutoff",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Heure limite des virements vers une autre banque",
+              "similarity_score": 0.9176
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8753
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8414
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8378
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-limit",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8381
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8249
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8117
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8108
+            }
+          ]
+        },
+        {
+          "id": "unknown-exchange-rate",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.7947
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.7922
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            }
+          ]
+        },
+        {
+          "id": "unknown-branch-phone",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.7575
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.7537
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.7417
+            },
+            {
+              "title": "Fraude par carte : responsabilité du client",
+              "similarity_score": 0.7372
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8268
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8241
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8227
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "threshold": 0.55,
+      "metrics": {
+        "case_count": 26,
+        "answerable_count": 22,
+        "unanswerable_count": 4,
+        "recall_at_k": {
+          "1": 0.9545,
+          "2": 0.9545,
+          "4": 0.9545
+        },
+        "mrr": 0.9545,
+        "answerable_retrieval_rate": 0.9545,
+        "unanswerable_false_positive_rate": 1.0,
+        "unanswerable_rejection_rate": 0.0,
+        "median_retrieval_latency_seconds": 0.0166,
+        "p95_retrieval_latency_seconds": 0.02
+      },
+      "cases": [
+        {
+          "id": "contactless-fr",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8914
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8713
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8414
+            }
+          ]
+        },
+        {
+          "id": "contactless-en",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8534
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8356
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8089
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8013
+            }
+          ]
+        },
+        {
+          "id": "contactless-darija",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.836
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8248
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.7981
+            },
+            {
+              "title": "Blocage de l'accès après des erreurs de connexion",
+              "similarity_score": 0.7981
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-daily",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.9147
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.9145
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8586
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.8584
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-weekly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8395
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8088
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8058
+            }
+          ]
+        },
+        {
+          "id": "classic-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8695
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8661
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8327
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.801
+            }
+          ]
+        },
+        {
+          "id": "gold-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.9117
+            },
+            {
+              "title": "Plafonds de la carte Gold",
+              "similarity_score": 0.9045
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.9019
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-essential",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8305
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8279
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-premium",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8555
+            },
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-limit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8113
+            },
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.7956
+            },
+            {
+              "title": "Découvert autorisé maximum",
+              "similarity_score": 0.7857
+            },
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.7799
+            }
+          ]
+        },
+        {
+          "id": "essential-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            }
+          ]
+        },
+        {
+          "id": "essential-young-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Offre de bienvenue : 3 mois de tenue de compte offerts",
+              "similarity_score": 0.826
+            },
+            {
+              "title": "Paiement de factures dans l'application",
+              "similarity_score": 0.8204
+            }
+          ]
+        },
+        {
+          "id": "premium-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            }
+          ]
+        },
+        {
+          "id": "cashy-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            }
+          ]
+        },
+        {
+          "id": "other-tunisia-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8504
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8447
+            }
+          ]
+        },
+        {
+          "id": "foreign-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8114
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8101
+            }
+          ]
+        },
+        {
+          "id": "domestic-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8956
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8926
+            },
+            {
+              "title": "Délais des virements",
+              "similarity_score": 0.8496
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.836
+            }
+          ]
+        },
+        {
+          "id": "opening-age",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8709
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8628
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8547
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8486
+            }
+          ]
+        },
+        {
+          "id": "opening-deposit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Gratuité du compte Essentiel pour les moins de 26 ans",
+              "similarity_score": 0.8834
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8553
+            }
+          ]
+        },
+        {
+          "id": "branch-hours",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8708
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8351
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8319
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8195
+            }
+          ]
+        },
+        {
+          "id": "transfer-cutoff",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Heure limite des virements vers une autre banque",
+              "similarity_score": 0.9176
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8753
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8414
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8378
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-limit",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8381
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8249
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8117
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8108
+            }
+          ]
+        },
+        {
+          "id": "unknown-exchange-rate",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.7947
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.7922
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            }
+          ]
+        },
+        {
+          "id": "unknown-branch-phone",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.7575
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.7537
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.7417
+            },
+            {
+              "title": "Fraude par carte : responsabilité du client",
+              "similarity_score": 0.7372
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8268
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8241
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8227
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "threshold": 0.65,
+      "metrics": {
+        "case_count": 26,
+        "answerable_count": 22,
+        "unanswerable_count": 4,
+        "recall_at_k": {
+          "1": 0.9545,
+          "2": 0.9545,
+          "4": 0.9545
+        },
+        "mrr": 0.9545,
+        "answerable_retrieval_rate": 0.9545,
+        "unanswerable_false_positive_rate": 1.0,
+        "unanswerable_rejection_rate": 0.0,
+        "median_retrieval_latency_seconds": 0.0164,
+        "p95_retrieval_latency_seconds": 0.0191
+      },
+      "cases": [
+        {
+          "id": "contactless-fr",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8914
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8713
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8414
+            }
+          ]
+        },
+        {
+          "id": "contactless-en",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.8534
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8356
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8089
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8013
+            }
+          ]
+        },
+        {
+          "id": "contactless-darija",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.836
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8248
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.7981
+            },
+            {
+              "title": "Blocage de l'accès après des erreurs de connexion",
+              "similarity_score": 0.7981
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-daily",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.9147
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.9145
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8586
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.8584
+            }
+          ]
+        },
+        {
+          "id": "classic-cash-weekly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8395
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8088
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8058
+            }
+          ]
+        },
+        {
+          "id": "classic-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8695
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8661
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8327
+            },
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.801
+            }
+          ]
+        },
+        {
+          "id": "gold-payment-monthly",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Carte Gold : cotisation et plafonds",
+              "similarity_score": 0.9117
+            },
+            {
+              "title": "Plafonds de la carte Gold",
+              "similarity_score": 0.9045
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.9019
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-essential",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8389
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8305
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8279
+            }
+          ]
+        },
+        {
+          "id": "online-transfer-premium",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.9029
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8555
+            },
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-limit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Plafond des virements internationaux",
+              "similarity_score": 0.8113
+            },
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.7956
+            },
+            {
+              "title": "Découvert autorisé maximum",
+              "similarity_score": 0.7857
+            },
+            {
+              "title": "Paiement sans contact",
+              "similarity_score": 0.7799
+            }
+          ]
+        },
+        {
+          "id": "essential-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9211
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8948
+            }
+          ]
+        },
+        {
+          "id": "essential-young-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Offre de bienvenue : 3 mois de tenue de compte offerts",
+              "similarity_score": 0.826
+            },
+            {
+              "title": "Paiement de factures dans l'application",
+              "similarity_score": 0.8204
+            }
+          ]
+        },
+        {
+          "id": "premium-monthly-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.9397
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.9033
+            }
+          ]
+        },
+        {
+          "id": "cashy-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8502
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            },
+            {
+              "title": "Tenue de compte Cashy Essentiel",
+              "similarity_score": 0.8328
+            }
+          ]
+        },
+        {
+          "id": "other-tunisia-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.9114
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8504
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8447
+            }
+          ]
+        },
+        {
+          "id": "foreign-atm-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.832
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8114
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8101
+            }
+          ]
+        },
+        {
+          "id": "domestic-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8494
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.8399
+            }
+          ]
+        },
+        {
+          "id": "international-transfer-fee",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8956
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8926
+            },
+            {
+              "title": "Délais des virements",
+              "similarity_score": 0.8496
+            },
+            {
+              "title": "Virements nationaux",
+              "similarity_score": 0.836
+            }
+          ]
+        },
+        {
+          "id": "opening-age",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8709
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8628
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8547
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8486
+            }
+          ]
+        },
+        {
+          "id": "opening-deposit",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.9008
+            },
+            {
+              "title": "Gratuité du compte Essentiel pour les moins de 26 ans",
+              "similarity_score": 0.8834
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8553
+            }
+          ]
+        },
+        {
+          "id": "branch-hours",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8708
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8351
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8319
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8195
+            }
+          ]
+        },
+        {
+          "id": "transfer-cutoff",
+          "answerable": true,
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Heure limite des virements vers une autre banque",
+              "similarity_score": 0.9176
+            },
+            {
+              "title": "Virement instantané entre comptes Cashy",
+              "similarity_score": 0.8753
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8414
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8378
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-limit",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8381
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8249
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8117
+            },
+            {
+              "title": "Carte Classic : cotisation et plafonds",
+              "similarity_score": 0.8108
+            }
+          ]
+        },
+        {
+          "id": "unknown-exchange-rate",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.7947
+            },
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.7922
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            },
+            {
+              "title": "Frais de retrait",
+              "similarity_score": 0.7838
+            }
+          ]
+        },
+        {
+          "id": "unknown-branch-phone",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.7575
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.7537
+            },
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.7417
+            },
+            {
+              "title": "Fraude par carte : responsabilité du client",
+              "similarity_score": 0.7372
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto",
+          "answerable": false,
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8268
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8241
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8227
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

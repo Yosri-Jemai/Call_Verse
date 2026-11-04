@@ -40,6 +40,7 @@ ABSTENTION_PHRASES = (
     "pas disponible dans les documents",
     "ma najamch n2akked",
 )
+SUPPORTED_LANGUAGE_TAGS = {"en", "fr", "aeb-Latn"}
 
 
 def normalize_text(value: str) -> str:
@@ -83,6 +84,18 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"{path}:{line_number}: duplicate id {case['id']!r}.")
             if not isinstance(case["question"], str) or not case["question"].strip():
                 raise ValueError(f"{path}:{line_number}: question must be a non-empty string.")
+            if "topic" in case and (
+                not isinstance(case["topic"], str) or not case["topic"].strip()
+            ):
+                raise ValueError(f"{path}:{line_number}: topic must be a non-empty string.")
+            if "language" in case and (
+                not isinstance(case["language"], str)
+                or case["language"] not in SUPPORTED_LANGUAGE_TAGS
+            ):
+                raise ValueError(
+                    f"{path}:{line_number}: language must be one of "
+                    f"{', '.join(sorted(SUPPORTED_LANGUAGE_TAGS))}."
+                )
             if not isinstance(case["expected_titles"], list) or not all(
                 isinstance(title, str) and title.strip() for title in case["expected_titles"]
             ):
@@ -336,6 +349,8 @@ def evaluate_model(
         evaluated.append(
             {
                 "id": case["id"],
+                "topic": case.get("topic"),
+                "language": case.get("language"),
                 "answer": answer_result["answer"],
                 "latency_seconds": answer_result["latency_seconds"],
                 "tool_call_count": answer_result["tool_call_count"],
@@ -504,7 +519,10 @@ def run_evaluation(
             case_metrics.append(
                 {
                     "id": case["id"],
+                    "topic": case.get("topic"),
+                    "language": case.get("language"),
                     "answerable": case["answerable"],
+                    "expected_titles": case["expected_titles"],
                     "found": result["found"],
                     "expected_document_rank": rank,
                     "top_documents": [
@@ -532,6 +550,21 @@ def run_evaluation(
         "embedding_model": settings.embedding_model,
         "configured_threshold": settings.similarity_threshold,
         "k_values": list(k_values),
+        "dataset_coverage": {
+            "case_count": len(cases),
+            "answerable_count": sum(case["answerable"] for case in cases),
+            "unanswerable_count": sum(not case["answerable"] for case in cases),
+            "by_language": {
+                language: sum(case.get("language") == language for case in cases)
+                for language in sorted(
+                    {case["language"] for case in cases if case.get("language")}
+                )
+            },
+            "by_topic": {
+                topic: sum(case.get("topic") == topic for case in cases)
+                for topic in sorted({case["topic"] for case in cases if case.get("topic")})
+            },
+        },
         "retrieval_by_threshold": threshold_reports,
     }
     if include_model:

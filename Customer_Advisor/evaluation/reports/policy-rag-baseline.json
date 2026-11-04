@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-11-04T22:00:04Z",
+  "created_at": "2026-11-04T23:30:27Z",
   "dataset": "evaluation\\policy_qa.jsonl",
   "index": "bank_policies",
   "index_chunk_count": 123,
@@ -10,29 +10,59 @@
     2,
     4
   ],
+  "dataset_coverage": {
+    "case_count": 51,
+    "answerable_count": 41,
+    "unanswerable_count": 10,
+    "by_language": {
+      "aeb-Latn": 8,
+      "en": 23,
+      "fr": 20
+    },
+    "by_topic": {
+      "accounts": 6,
+      "branches": 3,
+      "cards": 12,
+      "cash_access": 3,
+      "credit": 4,
+      "customer_service": 2,
+      "foreign_exchange": 2,
+      "incidents": 2,
+      "investments": 2,
+      "savings": 4,
+      "security": 4,
+      "transactions": 1,
+      "transfers": 6
+    }
+  },
   "retrieval_by_threshold": [
     {
       "threshold": 0.45,
       "metrics": {
-        "case_count": 26,
-        "answerable_count": 22,
-        "unanswerable_count": 4,
+        "case_count": 51,
+        "answerable_count": 41,
+        "unanswerable_count": 10,
         "recall_at_k": {
-          "1": 0.9545,
-          "2": 0.9545,
-          "4": 0.9545
+          "1": 0.9756,
+          "2": 0.9756,
+          "4": 0.9756
         },
-        "mrr": 0.9545,
-        "answerable_retrieval_rate": 0.9545,
+        "mrr": 0.9756,
+        "answerable_retrieval_rate": 0.9756,
         "unanswerable_false_positive_rate": 1.0,
         "unanswerable_rejection_rate": 0.0,
-        "median_retrieval_latency_seconds": 0.0161,
-        "p95_retrieval_latency_seconds": 0.0219
+        "median_retrieval_latency_seconds": 0.033,
+        "p95_retrieval_latency_seconds": 0.0596
       },
       "cases": [
         {
           "id": "contactless-fr",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -56,7 +86,12 @@
         },
         {
           "id": "contactless-en",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -80,7 +115,12 @@
         },
         {
           "id": "contactless-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -104,7 +144,12 @@
         },
         {
           "id": "classic-cash-daily",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -128,7 +173,12 @@
         },
         {
           "id": "classic-cash-weekly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -152,7 +202,14 @@
         },
         {
           "id": "classic-payment-monthly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic",
+            "Carte Classic : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -176,7 +233,14 @@
         },
         {
           "id": "gold-payment-monthly",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Gold",
+            "Carte Gold : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -200,7 +264,12 @@
         },
         {
           "id": "online-transfer-essential",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -224,7 +293,12 @@
         },
         {
           "id": "online-transfer-premium",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -248,7 +322,13 @@
         },
         {
           "id": "international-transfer-limit",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafond des virements internationaux",
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -272,7 +352,12 @@
         },
         {
           "id": "essential-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -296,7 +381,13 @@
         },
         {
           "id": "essential-young-fee",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel",
+            "Gratuité du compte Essentiel pour les moins de 26 ans"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -320,7 +411,12 @@
         },
         {
           "id": "premium-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Premium"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -344,7 +440,12 @@
         },
         {
           "id": "cashy-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -368,7 +469,12 @@
         },
         {
           "id": "other-tunisia-atm-fee",
+          "topic": "cash_access",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -392,7 +498,12 @@
         },
         {
           "id": "foreign-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -416,7 +527,12 @@
         },
         {
           "id": "domestic-transfer-fee",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Virements nationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -440,7 +556,12 @@
         },
         {
           "id": "international-transfer-fee",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -464,7 +585,12 @@
         },
         {
           "id": "opening-age",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -488,7 +614,12 @@
         },
         {
           "id": "opening-deposit",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -512,7 +643,12 @@
         },
         {
           "id": "branch-hours",
+          "topic": "branches",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Horaires des agences"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -536,7 +672,12 @@
         },
         {
           "id": "transfer-cutoff",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Heure limite des virements vers une autre banque"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -560,7 +701,10 @@
         },
         {
           "id": "unknown-platinum-limit",
+          "topic": "cards",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -584,7 +728,10 @@
         },
         {
           "id": "unknown-exchange-rate",
+          "topic": "foreign_exchange",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -608,7 +755,10 @@
         },
         {
           "id": "unknown-branch-phone",
+          "topic": "branches",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -632,7 +782,10 @@
         },
         {
           "id": "unknown-crypto",
+          "topic": "investments",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -651,6 +804,719 @@
             {
               "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
               "similarity_score": 0.8227
+            }
+          ]
+        },
+        {
+          "id": "card-temporary-block-fr",
+          "topic": "cards",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Blocage et déblocage temporaire de la carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.9245
+            },
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8498
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8418
+            },
+            {
+              "title": "Ouvrir un livret ou souscrire un dépôt à terme",
+              "similarity_score": 0.8369
+            }
+          ]
+        },
+        {
+          "id": "card-lost-stolen-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol de carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol de carte",
+              "similarity_score": 0.8875
+            },
+            {
+              "title": "Procédure en cas de perte ou vol de carte",
+              "similarity_score": 0.8756
+            },
+            {
+              "title": "Opposition sur un chèque perdu ou volé",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8441
+            }
+          ]
+        },
+        {
+          "id": "card-pin-block-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Code PIN erroné : carte bloquée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8544
+            },
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8067
+            },
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.7878
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.7737
+            }
+          ]
+        },
+        {
+          "id": "online-payment-security-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Paiement en ligne et authentification 3D Secure"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8697
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8223
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            }
+          ]
+        },
+        {
+          "id": "bank-never-asks-otp-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Informations que la banque ne demande jamais"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8366
+            },
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8256
+            },
+            {
+              "title": "RIB et IBAN du compte",
+              "similarity_score": 0.8213
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8163
+            }
+          ]
+        },
+        {
+          "id": "forgot-password-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Mot de passe oublié"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8762
+            },
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Changement d'adresse ou de téléphone",
+              "similarity_score": 0.8499
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8449
+            }
+          ]
+        },
+        {
+          "id": "cash-not-dispensed-fr",
+          "topic": "incidents",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Retrait au distributeur : billets non délivrés"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.9256
+            },
+            {
+              "title": "Contestation d'une opération",
+              "similarity_score": 0.8707
+            },
+            {
+              "title": "Double débit chez un commerçant",
+              "similarity_score": 0.8644
+            },
+            {
+              "title": "Erreur de la banque sur un débit",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "wrong-transfer-beneficiary-en",
+          "topic": "incidents",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Virement envoyé à un mauvais bénéficiaire"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virement envoyé à un mauvais bénéficiaire",
+              "similarity_score": 0.8573
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8263
+            },
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8169
+            }
+          ]
+        },
+        {
+          "id": "savings-opening-en",
+          "topic": "savings",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : conditions d'ouverture"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8786
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8464
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8361
+            }
+          ]
+        },
+        {
+          "id": "savings-withdrawal-limit-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : plafond de dépôt et retraits"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8997
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8567
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            }
+          ]
+        },
+        {
+          "id": "term-deposit-rate-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Dépôt à terme : conditions et taux"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8931
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Compte Épargne Logement",
+              "similarity_score": 0.8495
+            }
+          ]
+        },
+        {
+          "id": "scheduled-savings-darija",
+          "topic": "savings",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Épargne programmée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.808
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8076
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.7924
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-eligibility-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : conditions d'éligibilité"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.9134
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.904
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8802
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8785
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-max-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : montants maximum selon le compte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8105
+            }
+          ]
+        },
+        {
+          "id": "mortgage-financing-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit immobilier : conditions de financement"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8522
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8262
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8186
+            }
+          ]
+        },
+        {
+          "id": "credit-application-response-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Constitution d'un dossier de crédit"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Constitution d'un dossier de crédit",
+              "similarity_score": 0.8538
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8531
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            }
+          ]
+        },
+        {
+          "id": "rib-and-certificate-fee-en",
+          "topic": "customer_service",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Attestations bancaires et RIB"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Attestations bancaires et RIB",
+              "similarity_score": 0.873
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8226
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8118
+            },
+            {
+              "title": "Clôturer un livret d'épargne",
+              "similarity_score": 0.8046
+            }
+          ]
+        },
+        {
+          "id": "customer-service-darija",
+          "topic": "customer_service",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Contacter le service client"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8284
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.819
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.8182
+            }
+          ]
+        },
+        {
+          "id": "lost-phone-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol du téléphone"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8346
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8215
+            },
+            {
+              "title": "Activation de l'application Cashy",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8154
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-balance-fr",
+          "topic": "accounts",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8845
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8736
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-exchange-darija",
+          "topic": "foreign_exchange",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8179
+            },
+            {
+              "title": "Chèque sans provision",
+              "similarity_score": 0.8124
+            },
+            {
+              "title": "Taux du découvert autorisé",
+              "similarity_score": 0.8104
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8085
+            }
+          ]
+        },
+        {
+          "id": "unknown-last-transaction-en",
+          "topic": "transactions",
+          "language": "en",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8072
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8009
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto-yield-fr",
+          "topic": "investments",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.862
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8516
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-fee-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8746
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8642
+            }
+          ]
+        },
+        {
+          "id": "unknown-sfax-address-darija",
+          "topic": "branches",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8301
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8261
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8205
             }
           ]
         }
@@ -659,25 +1525,30 @@
     {
       "threshold": 0.55,
       "metrics": {
-        "case_count": 26,
-        "answerable_count": 22,
-        "unanswerable_count": 4,
+        "case_count": 51,
+        "answerable_count": 41,
+        "unanswerable_count": 10,
         "recall_at_k": {
-          "1": 0.9545,
-          "2": 0.9545,
-          "4": 0.9545
+          "1": 0.9756,
+          "2": 0.9756,
+          "4": 0.9756
         },
-        "mrr": 0.9545,
-        "answerable_retrieval_rate": 0.9545,
+        "mrr": 0.9756,
+        "answerable_retrieval_rate": 0.9756,
         "unanswerable_false_positive_rate": 1.0,
         "unanswerable_rejection_rate": 0.0,
-        "median_retrieval_latency_seconds": 0.0166,
-        "p95_retrieval_latency_seconds": 0.02
+        "median_retrieval_latency_seconds": 0.0488,
+        "p95_retrieval_latency_seconds": 0.172
       },
       "cases": [
         {
           "id": "contactless-fr",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -701,7 +1572,12 @@
         },
         {
           "id": "contactless-en",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -725,7 +1601,12 @@
         },
         {
           "id": "contactless-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -749,7 +1630,12 @@
         },
         {
           "id": "classic-cash-daily",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -773,7 +1659,12 @@
         },
         {
           "id": "classic-cash-weekly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -797,7 +1688,14 @@
         },
         {
           "id": "classic-payment-monthly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic",
+            "Carte Classic : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -821,7 +1719,14 @@
         },
         {
           "id": "gold-payment-monthly",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Gold",
+            "Carte Gold : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -845,7 +1750,12 @@
         },
         {
           "id": "online-transfer-essential",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -869,7 +1779,12 @@
         },
         {
           "id": "online-transfer-premium",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -893,7 +1808,13 @@
         },
         {
           "id": "international-transfer-limit",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafond des virements internationaux",
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -917,7 +1838,12 @@
         },
         {
           "id": "essential-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -941,7 +1867,13 @@
         },
         {
           "id": "essential-young-fee",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel",
+            "Gratuité du compte Essentiel pour les moins de 26 ans"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -965,7 +1897,12 @@
         },
         {
           "id": "premium-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Premium"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -989,7 +1926,12 @@
         },
         {
           "id": "cashy-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1013,7 +1955,12 @@
         },
         {
           "id": "other-tunisia-atm-fee",
+          "topic": "cash_access",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1037,7 +1984,12 @@
         },
         {
           "id": "foreign-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1061,7 +2013,12 @@
         },
         {
           "id": "domestic-transfer-fee",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Virements nationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1085,7 +2042,12 @@
         },
         {
           "id": "international-transfer-fee",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1109,7 +2071,12 @@
         },
         {
           "id": "opening-age",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1133,7 +2100,12 @@
         },
         {
           "id": "opening-deposit",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1157,7 +2129,12 @@
         },
         {
           "id": "branch-hours",
+          "topic": "branches",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Horaires des agences"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1181,7 +2158,12 @@
         },
         {
           "id": "transfer-cutoff",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Heure limite des virements vers une autre banque"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1205,7 +2187,10 @@
         },
         {
           "id": "unknown-platinum-limit",
+          "topic": "cards",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1229,7 +2214,10 @@
         },
         {
           "id": "unknown-exchange-rate",
+          "topic": "foreign_exchange",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1253,7 +2241,10 @@
         },
         {
           "id": "unknown-branch-phone",
+          "topic": "branches",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1277,7 +2268,10 @@
         },
         {
           "id": "unknown-crypto",
+          "topic": "investments",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1296,6 +2290,719 @@
             {
               "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
               "similarity_score": 0.8227
+            }
+          ]
+        },
+        {
+          "id": "card-temporary-block-fr",
+          "topic": "cards",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Blocage et déblocage temporaire de la carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.9245
+            },
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8498
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8418
+            },
+            {
+              "title": "Ouvrir un livret ou souscrire un dépôt à terme",
+              "similarity_score": 0.8369
+            }
+          ]
+        },
+        {
+          "id": "card-lost-stolen-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol de carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol de carte",
+              "similarity_score": 0.8875
+            },
+            {
+              "title": "Procédure en cas de perte ou vol de carte",
+              "similarity_score": 0.8756
+            },
+            {
+              "title": "Opposition sur un chèque perdu ou volé",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8441
+            }
+          ]
+        },
+        {
+          "id": "card-pin-block-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Code PIN erroné : carte bloquée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8544
+            },
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8067
+            },
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.7878
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.7737
+            }
+          ]
+        },
+        {
+          "id": "online-payment-security-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Paiement en ligne et authentification 3D Secure"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8697
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8223
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            }
+          ]
+        },
+        {
+          "id": "bank-never-asks-otp-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Informations que la banque ne demande jamais"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8366
+            },
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8256
+            },
+            {
+              "title": "RIB et IBAN du compte",
+              "similarity_score": 0.8213
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8163
+            }
+          ]
+        },
+        {
+          "id": "forgot-password-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Mot de passe oublié"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8762
+            },
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Changement d'adresse ou de téléphone",
+              "similarity_score": 0.8499
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8449
+            }
+          ]
+        },
+        {
+          "id": "cash-not-dispensed-fr",
+          "topic": "incidents",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Retrait au distributeur : billets non délivrés"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.9256
+            },
+            {
+              "title": "Contestation d'une opération",
+              "similarity_score": 0.8707
+            },
+            {
+              "title": "Double débit chez un commerçant",
+              "similarity_score": 0.8644
+            },
+            {
+              "title": "Erreur de la banque sur un débit",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "wrong-transfer-beneficiary-en",
+          "topic": "incidents",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Virement envoyé à un mauvais bénéficiaire"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virement envoyé à un mauvais bénéficiaire",
+              "similarity_score": 0.8573
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8263
+            },
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8169
+            }
+          ]
+        },
+        {
+          "id": "savings-opening-en",
+          "topic": "savings",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : conditions d'ouverture"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8786
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8464
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8361
+            }
+          ]
+        },
+        {
+          "id": "savings-withdrawal-limit-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : plafond de dépôt et retraits"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8997
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8567
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            }
+          ]
+        },
+        {
+          "id": "term-deposit-rate-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Dépôt à terme : conditions et taux"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8931
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Compte Épargne Logement",
+              "similarity_score": 0.8495
+            }
+          ]
+        },
+        {
+          "id": "scheduled-savings-darija",
+          "topic": "savings",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Épargne programmée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.808
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8076
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.7924
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-eligibility-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : conditions d'éligibilité"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.9134
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.904
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8802
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8785
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-max-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : montants maximum selon le compte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8105
+            }
+          ]
+        },
+        {
+          "id": "mortgage-financing-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit immobilier : conditions de financement"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8522
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8262
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8186
+            }
+          ]
+        },
+        {
+          "id": "credit-application-response-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Constitution d'un dossier de crédit"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Constitution d'un dossier de crédit",
+              "similarity_score": 0.8538
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8531
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            }
+          ]
+        },
+        {
+          "id": "rib-and-certificate-fee-en",
+          "topic": "customer_service",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Attestations bancaires et RIB"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Attestations bancaires et RIB",
+              "similarity_score": 0.873
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8226
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8118
+            },
+            {
+              "title": "Clôturer un livret d'épargne",
+              "similarity_score": 0.8046
+            }
+          ]
+        },
+        {
+          "id": "customer-service-darija",
+          "topic": "customer_service",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Contacter le service client"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8284
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.819
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.8182
+            }
+          ]
+        },
+        {
+          "id": "lost-phone-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol du téléphone"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8346
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8215
+            },
+            {
+              "title": "Activation de l'application Cashy",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8154
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-balance-fr",
+          "topic": "accounts",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8845
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8736
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-exchange-darija",
+          "topic": "foreign_exchange",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8179
+            },
+            {
+              "title": "Chèque sans provision",
+              "similarity_score": 0.8124
+            },
+            {
+              "title": "Taux du découvert autorisé",
+              "similarity_score": 0.8104
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8085
+            }
+          ]
+        },
+        {
+          "id": "unknown-last-transaction-en",
+          "topic": "transactions",
+          "language": "en",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8072
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8009
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto-yield-fr",
+          "topic": "investments",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.862
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8516
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-fee-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8746
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8642
+            }
+          ]
+        },
+        {
+          "id": "unknown-sfax-address-darija",
+          "topic": "branches",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8301
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8261
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8205
             }
           ]
         }
@@ -1304,25 +3011,30 @@
     {
       "threshold": 0.65,
       "metrics": {
-        "case_count": 26,
-        "answerable_count": 22,
-        "unanswerable_count": 4,
+        "case_count": 51,
+        "answerable_count": 41,
+        "unanswerable_count": 10,
         "recall_at_k": {
-          "1": 0.9545,
-          "2": 0.9545,
-          "4": 0.9545
+          "1": 0.9756,
+          "2": 0.9756,
+          "4": 0.9756
         },
-        "mrr": 0.9545,
-        "answerable_retrieval_rate": 0.9545,
+        "mrr": 0.9756,
+        "answerable_retrieval_rate": 0.9756,
         "unanswerable_false_positive_rate": 1.0,
         "unanswerable_rejection_rate": 0.0,
-        "median_retrieval_latency_seconds": 0.0164,
-        "p95_retrieval_latency_seconds": 0.0191
+        "median_retrieval_latency_seconds": 0.0334,
+        "p95_retrieval_latency_seconds": 0.0719
       },
       "cases": [
         {
           "id": "contactless-fr",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1346,7 +3058,12 @@
         },
         {
           "id": "contactless-en",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1370,7 +3087,12 @@
         },
         {
           "id": "contactless-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
           "answerable": true,
+          "expected_titles": [
+            "Paiement sans contact"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1394,7 +3116,12 @@
         },
         {
           "id": "classic-cash-daily",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1418,7 +3145,12 @@
         },
         {
           "id": "classic-cash-weekly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1442,7 +3174,14 @@
         },
         {
           "id": "classic-payment-monthly",
+          "topic": "cards",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Classic",
+            "Carte Classic : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1466,7 +3205,14 @@
         },
         {
           "id": "gold-payment-monthly",
+          "topic": "cards",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de la carte Gold",
+            "Carte Gold : cotisation et plafonds",
+            "Plafond de paiement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1490,7 +3236,12 @@
         },
         {
           "id": "online-transfer-essential",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1514,7 +3265,12 @@
         },
         {
           "id": "online-transfer-premium",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Plafonds de virement en ligne"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1538,7 +3294,13 @@
         },
         {
           "id": "international-transfer-limit",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Plafond des virements internationaux",
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1562,7 +3324,12 @@
         },
         {
           "id": "essential-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1586,7 +3353,13 @@
         },
         {
           "id": "essential-young-fee",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Essentiel",
+            "Gratuité du compte Essentiel pour les moins de 26 ans"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1610,7 +3383,12 @@
         },
         {
           "id": "premium-monthly-fee",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Tenue de compte Cashy Premium"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1634,7 +3412,12 @@
         },
         {
           "id": "cashy-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1658,7 +3441,12 @@
         },
         {
           "id": "other-tunisia-atm-fee",
+          "topic": "cash_access",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1682,7 +3470,12 @@
         },
         {
           "id": "foreign-atm-fee",
+          "topic": "cash_access",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Frais de retrait"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1706,7 +3499,12 @@
         },
         {
           "id": "domestic-transfer-fee",
+          "topic": "transfers",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Virements nationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1730,7 +3528,12 @@
         },
         {
           "id": "international-transfer-fee",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Virements internationaux"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1754,7 +3557,12 @@
         },
         {
           "id": "opening-age",
+          "topic": "accounts",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1778,7 +3586,12 @@
         },
         {
           "id": "opening-deposit",
+          "topic": "accounts",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Conditions d'ouverture de compte"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1802,7 +3615,12 @@
         },
         {
           "id": "branch-hours",
+          "topic": "branches",
+          "language": "en",
           "answerable": true,
+          "expected_titles": [
+            "Horaires des agences"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1826,7 +3644,12 @@
         },
         {
           "id": "transfer-cutoff",
+          "topic": "transfers",
+          "language": "fr",
           "answerable": true,
+          "expected_titles": [
+            "Heure limite des virements vers une autre banque"
+          ],
           "found": true,
           "expected_document_rank": 1,
           "top_documents": [
@@ -1850,7 +3673,10 @@
         },
         {
           "id": "unknown-platinum-limit",
+          "topic": "cards",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1874,7 +3700,10 @@
         },
         {
           "id": "unknown-exchange-rate",
+          "topic": "foreign_exchange",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1898,7 +3727,10 @@
         },
         {
           "id": "unknown-branch-phone",
+          "topic": "branches",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1922,7 +3754,10 @@
         },
         {
           "id": "unknown-crypto",
+          "topic": "investments",
+          "language": "en",
           "answerable": false,
+          "expected_titles": [],
           "found": true,
           "expected_document_rank": null,
           "top_documents": [
@@ -1941,6 +3776,719 @@
             {
               "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
               "similarity_score": 0.8227
+            }
+          ]
+        },
+        {
+          "id": "card-temporary-block-fr",
+          "topic": "cards",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Blocage et déblocage temporaire de la carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.9245
+            },
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8498
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8418
+            },
+            {
+              "title": "Ouvrir un livret ou souscrire un dépôt à terme",
+              "similarity_score": 0.8369
+            }
+          ]
+        },
+        {
+          "id": "card-lost-stolen-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol de carte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol de carte",
+              "similarity_score": 0.8875
+            },
+            {
+              "title": "Procédure en cas de perte ou vol de carte",
+              "similarity_score": 0.8756
+            },
+            {
+              "title": "Opposition sur un chèque perdu ou volé",
+              "similarity_score": 0.8489
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8441
+            }
+          ]
+        },
+        {
+          "id": "card-pin-block-en",
+          "topic": "cards",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Code PIN erroné : carte bloquée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Code PIN erroné : carte bloquée",
+              "similarity_score": 0.8544
+            },
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8067
+            },
+            {
+              "title": "Blocage et déblocage temporaire de la carte",
+              "similarity_score": 0.7878
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.7737
+            }
+          ]
+        },
+        {
+          "id": "online-payment-security-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Paiement en ligne et authentification 3D Secure"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8697
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8223
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8209
+            }
+          ]
+        },
+        {
+          "id": "bank-never-asks-otp-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Informations que la banque ne demande jamais"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8366
+            },
+            {
+              "title": "Paiement en ligne et authentification 3D Secure",
+              "similarity_score": 0.8256
+            },
+            {
+              "title": "RIB et IBAN du compte",
+              "similarity_score": 0.8213
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.8163
+            }
+          ]
+        },
+        {
+          "id": "forgot-password-fr",
+          "topic": "security",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Mot de passe oublié"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8762
+            },
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Changement d'adresse ou de téléphone",
+              "similarity_score": 0.8499
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8449
+            }
+          ]
+        },
+        {
+          "id": "cash-not-dispensed-fr",
+          "topic": "incidents",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Retrait au distributeur : billets non délivrés"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.9256
+            },
+            {
+              "title": "Contestation d'une opération",
+              "similarity_score": 0.8707
+            },
+            {
+              "title": "Double débit chez un commerçant",
+              "similarity_score": 0.8644
+            },
+            {
+              "title": "Erreur de la banque sur un débit",
+              "similarity_score": 0.8586
+            }
+          ]
+        },
+        {
+          "id": "wrong-transfer-beneficiary-en",
+          "topic": "incidents",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Virement envoyé à un mauvais bénéficiaire"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Virement envoyé à un mauvais bénéficiaire",
+              "similarity_score": 0.8573
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8263
+            },
+            {
+              "title": "Retrait au distributeur : billets non délivrés",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8169
+            }
+          ]
+        },
+        {
+          "id": "savings-opening-en",
+          "topic": "savings",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : conditions d'ouverture"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8786
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8464
+            },
+            {
+              "title": "Compte épargne jeune",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8361
+            }
+          ]
+        },
+        {
+          "id": "savings-withdrawal-limit-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Livret Cashy Épargne : plafond de dépôt et retraits"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8997
+            },
+            {
+              "title": "Absence de plafond de solde sur les comptes courants",
+              "similarity_score": 0.8567
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8439
+            }
+          ]
+        },
+        {
+          "id": "term-deposit-rate-fr",
+          "topic": "savings",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Dépôt à terme : conditions et taux"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8931
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Conditions d'ouverture de compte",
+              "similarity_score": 0.8589
+            },
+            {
+              "title": "Compte Épargne Logement",
+              "similarity_score": 0.8495
+            }
+          ]
+        },
+        {
+          "id": "scheduled-savings-darija",
+          "topic": "savings",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Épargne programmée"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.8188
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.808
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8076
+            },
+            {
+              "title": "Authentification forte et appareil de confiance",
+              "similarity_score": 0.7924
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-eligibility-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : conditions d'éligibilité"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.9134
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.904
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8802
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8785
+            }
+          ]
+        },
+        {
+          "id": "consumer-credit-max-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit consommation : montants maximum selon le compte"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit consommation : montants maximum selon le compte",
+              "similarity_score": 0.8582
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de virement en ligne",
+              "similarity_score": 0.8255
+            },
+            {
+              "title": "Plafonds de la carte Classic",
+              "similarity_score": 0.8105
+            }
+          ]
+        },
+        {
+          "id": "mortgage-financing-en",
+          "topic": "credit",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Crédit immobilier : conditions de financement"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8522
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8277
+            },
+            {
+              "title": "Crédit consommation : conditions d'éligibilité",
+              "similarity_score": 0.8262
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8186
+            }
+          ]
+        },
+        {
+          "id": "credit-application-response-fr",
+          "topic": "credit",
+          "language": "fr",
+          "answerable": true,
+          "expected_titles": [
+            "Constitution d'un dossier de crédit"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Constitution d'un dossier de crédit",
+              "similarity_score": 0.8538
+            },
+            {
+              "title": "Carte avalée par un distributeur",
+              "similarity_score": 0.8531
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            },
+            {
+              "title": "Procédure de réclamation",
+              "similarity_score": 0.8473
+            }
+          ]
+        },
+        {
+          "id": "rib-and-certificate-fee-en",
+          "topic": "customer_service",
+          "language": "en",
+          "answerable": true,
+          "expected_titles": [
+            "Attestations bancaires et RIB"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Attestations bancaires et RIB",
+              "similarity_score": 0.873
+            },
+            {
+              "title": "Ajouter un bénéficiaire de virement",
+              "similarity_score": 0.8226
+            },
+            {
+              "title": "Virement international : informations et justificatifs",
+              "similarity_score": 0.8118
+            },
+            {
+              "title": "Clôturer un livret d'épargne",
+              "similarity_score": 0.8046
+            }
+          ]
+        },
+        {
+          "id": "customer-service-darija",
+          "topic": "customer_service",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Contacter le service client"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Contacter le service client",
+              "similarity_score": 0.8412
+            },
+            {
+              "title": "Disponibilité du service en ligne",
+              "similarity_score": 0.8284
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.819
+            },
+            {
+              "title": "Conditions du compte Premium",
+              "similarity_score": 0.8182
+            }
+          ]
+        },
+        {
+          "id": "lost-phone-darija",
+          "topic": "security",
+          "language": "aeb-Latn",
+          "answerable": true,
+          "expected_titles": [
+            "Perte ou vol du téléphone"
+          ],
+          "found": true,
+          "expected_document_rank": 1,
+          "top_documents": [
+            {
+              "title": "Perte ou vol du téléphone",
+              "similarity_score": 0.8346
+            },
+            {
+              "title": "Que faire en cas de suspicion de fraude ou d'hameçonnage",
+              "similarity_score": 0.8215
+            },
+            {
+              "title": "Activation de l'application Cashy",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Mot de passe oublié",
+              "similarity_score": 0.8154
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-balance-fr",
+          "topic": "accounts",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8845
+            },
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8736
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8727
+            }
+          ]
+        },
+        {
+          "id": "unknown-current-exchange-darija",
+          "topic": "foreign_exchange",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Dépôt d'espèces",
+              "similarity_score": 0.8179
+            },
+            {
+              "title": "Chèque sans provision",
+              "similarity_score": 0.8124
+            },
+            {
+              "title": "Taux du découvert autorisé",
+              "similarity_score": 0.8104
+            },
+            {
+              "title": "Virements internationaux",
+              "similarity_score": 0.8085
+            }
+          ]
+        },
+        {
+          "id": "unknown-last-transaction-en",
+          "topic": "transactions",
+          "language": "en",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Activation d'une nouvelle carte et choix du code PIN",
+              "similarity_score": 0.8072
+            },
+            {
+              "title": "Plafond de paiement en ligne",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Paiement en ligne frauduleux ou litige avec un site marchand",
+              "similarity_score": 0.8028
+            },
+            {
+              "title": "Frais de paiement par carte à l'étranger",
+              "similarity_score": 0.8009
+            }
+          ]
+        },
+        {
+          "id": "unknown-crypto-yield-fr",
+          "topic": "investments",
+          "language": "fr",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.862
+            },
+            {
+              "title": "Crédit immobilier : conditions de financement",
+              "similarity_score": 0.8516
+            },
+            {
+              "title": "Épargne programmée",
+              "similarity_score": 0.85
+            },
+            {
+              "title": "Livret Cashy Épargne : plafond de dépôt et retraits",
+              "similarity_score": 0.8484
+            }
+          ]
+        },
+        {
+          "id": "unknown-platinum-fee-darija",
+          "topic": "cards",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Carte virtuelle pour les achats en ligne",
+              "similarity_score": 0.8746
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Tenue de compte Cashy Premium",
+              "similarity_score": 0.8642
+            },
+            {
+              "title": "Livret Cashy Épargne : rémunération",
+              "similarity_score": 0.8642
+            }
+          ]
+        },
+        {
+          "id": "unknown-sfax-address-darija",
+          "topic": "branches",
+          "language": "aeb-Latn",
+          "answerable": false,
+          "expected_titles": [],
+          "found": true,
+          "expected_document_rank": null,
+          "top_documents": [
+            {
+              "title": "Horaires des agences",
+              "similarity_score": 0.8301
+            },
+            {
+              "title": "Informations que la banque ne demande jamais",
+              "similarity_score": 0.8261
+            },
+            {
+              "title": "Livret Cashy Épargne : conditions d'ouverture",
+              "similarity_score": 0.8206
+            },
+            {
+              "title": "Dépôt à terme : conditions et taux",
+              "similarity_score": 0.8205
             }
           ]
         }

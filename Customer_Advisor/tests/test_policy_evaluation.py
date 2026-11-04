@@ -18,10 +18,28 @@ from evaluation.ragchecker_worker import _groq_llm_callback
 def test_evaluation_dataset_is_labeled_and_has_answerable_and_unanswerable_cases():
     cases = load_cases(DEFAULT_DATASET)
 
-    assert len(cases) >= 20
+    assert len(cases) >= 45
     assert any(case["answerable"] for case in cases)
     assert any(not case["answerable"] for case in cases)
     assert len({case["id"] for case in cases}) == len(cases)
+    assert {case["language"] for case in cases} == {"en", "fr", "aeb-Latn"}
+    assert {
+        "cards",
+        "security",
+        "incidents",
+        "savings",
+        "credit",
+        "customer_service",
+        "transfers",
+        "accounts",
+        "branches",
+        "cash_access",
+    }.issubset({case["topic"] for case in cases})
+    assert sum(not case["answerable"] for case in cases) >= 8
+    assert all(
+        any(not case["answerable"] and case["language"] == language for case in cases)
+        for language in ("en", "fr", "aeb-Latn")
+    )
 
 
 def test_normalization_handles_accents_case_and_punctuation():
@@ -116,6 +134,27 @@ def test_dataset_rejects_answerability_mismatch(tmp_path: Path):
         assert "answerable must match" in str(exc)
     else:
         raise AssertionError("Answerability mismatches must be rejected.")
+
+
+def test_dataset_rejects_unknown_language_tag(tmp_path: Path):
+    dataset = tmp_path / "unknown-language.jsonl"
+    case = {
+        "id": "unknown-language",
+        "question": "Question?",
+        "category": None,
+        "expected_titles": [],
+        "answerable": False,
+        "required_fact_groups": [],
+        "language": "unknown",
+    }
+    dataset.write_text(json.dumps(case) + "\n", encoding="utf-8")
+
+    try:
+        load_cases(dataset)
+    except ValueError as exc:
+        assert "language must be one of" in str(exc)
+    else:
+        raise AssertionError("Unknown language tags must be rejected.")
 
 
 def test_model_evaluation_blocks_non_policy_tool_calls():

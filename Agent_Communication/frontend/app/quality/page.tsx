@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const CLIENT_API = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://127.0.0.1:8001";
@@ -135,9 +134,9 @@ export default function QualityPage() {
             <p className="text-[17px] font-semibold tracking-[-.04em]">Quality Analyst</p>
             <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Call review & advisor coaching</p>
           </div>
-          <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+          <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
             Back to Relay
-          </Link>
+          </a>
         </div>
       </header>
 

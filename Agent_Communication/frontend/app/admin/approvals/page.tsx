@@ -159,7 +159,7 @@ export default function AdminApprovalsPage() {
             </div>
           </Link>
           <div className="flex items-center gap-2">
-            <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</Link>
+            <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</a>
             <button
               type="button"
               onClick={async () => {

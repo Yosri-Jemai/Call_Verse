@@ -65,6 +65,42 @@ type ApprovalRequest = {
 };
 type RunMode = "autopilot" | "manual";
 type SpeechEngine = "advisor" | "client";
+type PersistedRelayState = {
+  version: 1;
+  scenario: string;
+  mood: number;
+  language: string;
+  difficulty: number;
+  seed: string;
+  clientEngine: string;
+  mode: RunMode;
+  speechEngine: SpeechEngine;
+  call: CallSnapshot | null;
+  threadId: string | null;
+  composer: string;
+  autoplay: boolean;
+  qualityReport: QualityReport | null;
+  qualityError: string;
+  safetyNote: string;
+  approvalRequest: ApprovalRequest | null;
+  wfmFlag: WfmFlag | null;
+  advisorTrace: CallAuditTrace[];
+};
+
+const RELAY_STATE_KEY = "relay-conversation-state-v1";
+
+function isPersistedRelayState(value: unknown): value is PersistedRelayState {
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Partial<PersistedRelayState>;
+  return state.version === 1
+    && (state.call === null || (
+      typeof state.call === "object"
+      && typeof state.call.call_id === "string"
+      && Array.isArray(state.call.history)
+      && typeof state.call.client?.name === "string"
+    ))
+    && Array.isArray(state.advisorTrace);
+}
 
 const defaultScenarios: Scenario[] = [
   { name: "normal", description: "Everyday account or service request" },
@@ -174,6 +210,7 @@ function Icon({ name, size = 18 }: { name: "play" | "stop" | "mic" | "send" | "v
 }
 
 export default function Home() {
+  const [storageReady, setStorageReady] = useState(false);
   const [scenario, setScenario] = useState("normal");
   const [mood, setMood] = useState(0);
   const [language, setLanguage] = useState("auto");
@@ -214,6 +251,86 @@ export default function Home() {
   const qualityAttemptedCallRef = useRef<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(RELAY_STATE_KEY);
+      if (raw) {
+        const saved: unknown = JSON.parse(raw);
+        if (!isPersistedRelayState(saved)) {
+          throw new Error("Saved Relay session has an unsupported format.");
+        }
+        setScenario(saved.scenario);
+        setMood(saved.mood);
+        setLanguage(saved.language);
+        setDifficulty(saved.difficulty);
+        setSeed(saved.seed);
+        setClientEngine(saved.clientEngine);
+        setMode(saved.mode);
+        setSpeechEngine(saved.speechEngine);
+        setCall(saved.call);
+        setThreadId(saved.threadId);
+        setComposer(saved.composer);
+        setAutoplay(saved.autoplay);
+        autoplayRef.current = saved.autoplay;
+        setQualityReport(saved.qualityReport);
+        setQualityError(saved.qualityError);
+        setSafetyNote(saved.safetyNote);
+        setApprovalRequest(saved.approvalRequest);
+        setWfmFlag(saved.wfmFlag);
+        wfmFlagRef.current = saved.wfmFlag;
+        advisorTraceRef.current = saved.advisorTrace;
+
+        if (saved.call) {
+          void requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${saved.call.call_id}`)
+            .then((latest) => {
+              setCall((current) => current?.call_id === latest.call_id ? latest : current);
+            })
+            .catch((reason) => {
+              setError(`Restored the saved transcript, but could not refresh the live call: ${reason instanceof Error ? reason.message : "the Client Simulator API is unavailable."}`);
+            });
+        }
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not restore the saved Relay session.");
+    } finally {
+      setStorageReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    const saved: PersistedRelayState = {
+      version: 1,
+      scenario,
+      mood,
+      language,
+      difficulty,
+      seed,
+      clientEngine,
+      mode,
+      speechEngine,
+      call,
+      threadId,
+      composer,
+      autoplay,
+      qualityReport,
+      qualityError,
+      safetyNote,
+      approvalRequest,
+      wfmFlag,
+      advisorTrace: advisorTraceRef.current,
+    };
+    try {
+      window.sessionStorage.setItem(RELAY_STATE_KEY, JSON.stringify(saved));
+    } catch (reason) {
+      setError(`Could not save this Relay session in the browser: ${reason instanceof Error ? reason.message : "session storage is unavailable."}`);
+    }
+  }, [
+    storageReady, scenario, mood, language, difficulty, seed, clientEngine, mode,
+    speechEngine, call, threadId, composer, autoplay, qualityReport, qualityError,
+    safetyNote, approvalRequest, wfmFlag,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -382,16 +499,19 @@ export default function Home() {
     return "stopped";
   }
 
-  /** Gate + wait: returns the text to send to the caller, or null when the call must end (denied / stopped). */
-  async function approvedText(current: CallSnapshot, advisorText: string): Promise<{ text: string; end: boolean } | null> {
+  /** Gate + wait: a denied action is replaced, but the conversation stays open for safe follow-up. */
+  async function approvedText(current: CallSnapshot, advisorText: string): Promise<{ text: string } | null> {
     let gate = await wfmGate(current, advisorText);
     if (gate.kind === "pause") {
       const decision = await waitForDecision(gate.reviewId);
       if (decision === "stopped") return null;
       gate = await wfmGate(current, advisorText);
     }
-    if (gate.kind === "deny") return { text: gate.text, end: true };
-    return { text: advisorText, end: false };
+    if (gate.kind === "deny") {
+      setSafetyNote("The requested action was denied. The conversation remains open for identity verification or a safe alternative.");
+      return { text: gate.text };
+    }
+    return { text: advisorText };
   }
 
   async function flagForReview() {
@@ -565,12 +685,12 @@ export default function Home() {
         if (decision === "stopped") break;
         if (decision === "denied") {
           const refusal = await approvedText(current, "");
-          if (refusal) current = await advanceSimulation(current, refusal.text);
-          if (current.status === "active") {
-            current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
-            setCall(current);
+          if (refusal) {
+            setSafetyNote("The requested action was denied. The conversation remains open for identity verification or a safe alternative.");
+            current = await advanceSimulation(current, refusal.text);
           }
-          break;
+          if (!refusal) break;
+          continue;
         }
         showFlag({ ...wfmFlagRef.current, status: "approved" });
       }
@@ -589,13 +709,6 @@ export default function Home() {
       const gated = await approvedText(current, advisor.answer);
       if (!gated) break;
       current = await advanceSimulation(current, gated.text);
-      if (gated.end) {
-        if (current.status === "active") {
-          current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
-          setCall(current);
-        }
-        break;
-      }
     }
     if (stopRequested.current && current.status === "active") {
       current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
@@ -622,10 +735,6 @@ export default function Home() {
       });
       setCall(updated);
       await playIfEnabled({ role: "conseiller", text }, call.client);
-      if (gated.end && updated.status === "active") {        // a person denied the request: the call ends
-        setCall(await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${call.call_id}/end`, { method: "POST" }));
-        return;
-      }
       const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
       if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
       if (updated.status !== "active") await analyzeQuality(updated);
@@ -773,45 +882,63 @@ export default function Home() {
   const callActive = call?.status === "active";
   const completed = Boolean(call && call.status !== "active");
 
+  if (!storageReady) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-paper px-5 text-ink">
+        <p className="rounded-2xl border border-[#e5e9e3] bg-white px-5 py-4 text-sm text-[#647168] shadow-panel">
+          Restoring your conversation…
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <header className="border-b border-[#e7eae4] bg-white/80">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-4 sm:px-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-forest text-white shadow-sm">
+      <header className="sticky top-0 z-30 border-b border-[#e5e9e3] bg-white/95 shadow-[0_4px_18px_rgba(27,45,35,0.04)] backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-5 py-4 sm:px-8 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-forest text-white shadow-[0_4px_10px_rgba(13,76,59,0.18)]">
               <span className="text-xl font-semibold">r</span>
             </div>
-            <div>
-              <div className="text-[17px] font-semibold tracking-[-.04em]">relay<span className="text-forest">.</span></div>
-              <div className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Agent communication studio</div>
+            <div className="min-w-0">
+              <div className="text-[18px] font-semibold tracking-[-.05em] text-[#172420]">relay<span className="text-forest">.</span></div>
+              <div className="text-[10px] font-semibold uppercase tracking-[.18em] text-[#89938d]">Agent communication studio</div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/quality" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-              Quality Analyst
-            </Link>
-            {userRole === "approver" && (
-              <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-                Admin inbox{approvalRequest ? " · 1" : ""}
+
+          <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-3">
+            <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-1 rounded-2xl border border-[#e8ece6] bg-[#f7f8f5] p-1">
+              <Link href="/quality" className="rounded-xl px-3 py-2 text-xs font-semibold text-[#5e6b62] transition hover:bg-white hover:text-forest hover:shadow-sm">
+                Quality Analyst
               </Link>
-            )}
+              <Link href="/workforce" className="rounded-xl px-3 py-2 text-xs font-semibold text-[#5e6b62] transition hover:bg-white hover:text-forest hover:shadow-sm">
+                Workforce
+              </Link>
+              {userRole === "approver" && (
+                <Link href="/admin/approvals" className="rounded-xl px-3 py-2 text-xs font-semibold text-[#5e6b62] transition hover:bg-white hover:text-forest hover:shadow-sm">
+                  Admin inbox{approvalRequest ? " · 1" : ""}
+                </Link>
+              )}
+            </nav>
+
+            <div className="flex items-center gap-2 rounded-full border border-[#e8ece6] bg-white px-3 py-2 text-[11px] font-medium text-[#647168]">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${advisorOnline && clientOnline ? "animate-ping bg-emerald-500" : "bg-rose-400"}`} />
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${advisorOnline && clientOnline ? "bg-emerald-500" : "bg-rose-400"}`} />
+              </span>
+              <span>{advisorOnline && clientOnline ? "Systems connected" : "Waiting for services"}</span>
+            </div>
+
             <button
               type="button"
               onClick={async () => {
                 await fetch("/api/auth/logout", { method: "POST" });
                 window.location.assign("/login");
               }}
-              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] transition hover:bg-white hover:text-forest"
+              className="rounded-xl border border-transparent px-3 py-2 text-xs font-semibold text-[#718076] transition hover:border-[#e6ebe5] hover:bg-white hover:text-forest"
             >
               Sign out
             </button>
-            <div className="hidden items-center gap-2 rounded-full border border-[#e6ebe5] bg-white px-3 py-2 text-xs font-medium text-[#68756d] sm:flex">
-              <span className="relative flex h-2 w-2">
-                <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${advisorOnline && clientOnline ? "animate-ping bg-emerald-500" : "bg-rose-400"}`} />
-                <span className={`relative inline-flex h-2 w-2 rounded-full ${advisorOnline && clientOnline ? "bg-emerald-500" : "bg-rose-400"}`} />
-              </span>
-              {advisorOnline && clientOnline ? "Systems connected" : "Waiting for services"}
-            </div>
           </div>
         </div>
       </header>

@@ -282,7 +282,7 @@ export default function WorkforcePage() {
             <button type="button" onClick={() => setTab("room")} className={`rounded-xl px-4 py-2 text-[13px] font-semibold ${tab === "room" ? "bg-white text-forest shadow-sm" : "text-[#6c786f]"}`}>Control room</button>
             <button type="button" onClick={() => setTab("approvals")} className={`rounded-xl px-4 py-2 text-[13px] font-semibold ${tab === "approvals" ? "bg-white text-forest shadow-sm" : waiting ? "text-amber-700" : "text-[#6c786f]"}`}>Approvals{waiting ? ` (${waiting})` : ""}</button>
           </div>
-          <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[12px] font-semibold text-[#56645b] hover:text-forest">← Conversation page</Link>
+          <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[12px] font-semibold text-[#56645b] hover:text-forest">← Conversation page</a>
         </div>
       </header>
 

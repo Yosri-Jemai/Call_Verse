@@ -132,6 +132,14 @@ def test_live_call_refused_by_a_person_gets_a_refusal(client):
     client.post(f"/api/reviews/{rid}/decision", json={"approved": False, "by": "Chaima"})
     d = client.post("/api/live/check", json=call | {"advisor_message": "C'est fait."}).json()
     assert d["action"] == "denied" and "refusé" in d["replace_with"]
+    safe = client.post("/api/live/check", json=call | {
+        "advisor_message": "I understand your frustration. I cannot carry out the transfer without identity verification. I can help verify your account or connect you with a supervisor."
+    }).json()
+    assert safe["action"] == "continue"
+    unsafe = client.post("/api/live/check", json=call | {
+        "advisor_message": "C'est fait, le virement est effectué."
+    }).json()
+    assert unsafe["action"] == "denied"
 
 
 def test_live_call_can_be_flagged_by_hand_and_plain_calls_pass(client):

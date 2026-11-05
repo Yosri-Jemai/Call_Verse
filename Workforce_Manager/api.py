@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from . import WFMConfig, WorkforceManager, run_baseline  # noqa: F401  (sets up the Client Simulator path)
 from client_simulator import SCENARIOS  # noqa: E402
+from judge import rule_analyse  # noqa: E402
 
 from .approvals import CATEGORY_LABELS, FRAUD_SUSPICION, assess, callback_supervisor  # noqa: E402
 from .learned import learned_from_conversations  # noqa: E402
@@ -511,7 +512,8 @@ def live_check(body: LiveCheck):
                filed and the conversation must wait until a person approves or denies it
     wait     = the review is still pending (keep waiting)
     approved = a person approved: the advisor's reply goes through, the conversation continues
-    denied   = a person denied: the reply is replaced by a refusal (`replace_with`) and the call ends
+    denied   = a person denied: the reply is replaced by a refusal (`replace_with`)
+    continue = the review was denied, but this advisor reply does not claim to execute the action
     none     = nothing risky"""
     cid = _safe_call_id(body.call_id)
     history = [m.model_dump() for m in body.history]
@@ -524,6 +526,10 @@ def live_check(body: LiveCheck):
         if existing:
             rv = existing[0]
             action = {"pending": "wait", "approved": "approved", "denied": "denied"}[rv["status"]]
+            if action == "denied" and body.advisor_message:
+                reply_flags = rule_analyse(body.advisor_message)
+                if not reply_flags["resolution"] or reply_flags["escalade"]:
+                    action = "continue"
             out = {"action": action, "review": _public_review(rv), **info}
             if action == "denied":
                 out["replace_with"] = REFUSALS.get(body.client.language, REFUSALS["fr"])

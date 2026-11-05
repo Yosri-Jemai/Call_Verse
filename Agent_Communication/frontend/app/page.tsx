@@ -823,7 +823,7 @@ export default function Home() {
             <section aria-label="Human approval" className={`mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 sm:mx-7 ${wfmFlag.status === "waiting" ? "border-amber-300 bg-amber-50" : wfmFlag.status === "approved" ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
               <div>
                 <p className="text-[12px] font-semibold text-ink">
-                  {wfmFlag.status === "waiting" ? "⏸ Conversation paused: waiting for a human decision" : wfmFlag.status === "approved" ? `✔ Approved${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the conversation continues` : `✖ Refused${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the customer was told no and the call ended`}
+                  {wfmFlag.status === "waiting" ? "Conversation paused: waiting for a human decision" : wfmFlag.status === "approved" ? `Approved${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the conversation continues` : `Refused${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the customer was told no and the call ended`}
                 </p>
                 <p className="mt-1 text-[11px] leading-5 text-[#5f6d64]">
                   {wfmFlag.label}: {call?.client.name || "the customer"} wants to {wfmFlag.requested}.{wfmFlag.status === "waiting" ? " Nothing is done until a person approves it." : ""}
@@ -836,7 +836,7 @@ export default function Home() {
           )}
           {call && wfmOnline && !wfmFlag && (
             <div className="mx-5 mt-3 flex justify-end sm:mx-7">
-              <button type="button" onClick={() => void flagForReview()} className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-50">⚑ Flag this call as suspected fraud</button>
+              <button type="button" onClick={() => void flagForReview()} className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-50">Flag this call as suspected fraud</button>
             </div>
           )}
 

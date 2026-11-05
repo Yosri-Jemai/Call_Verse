@@ -100,7 +100,7 @@ only used to score the decisions in the reports.
 - **http://127.0.0.1:3000** (live conversation)
   - Every advisor reply goes through the approval gate before the caller hears it.
   - If Cashy (or you, in manual mode) is about to execute a profile change, a sensitive transfer or a suspected-fraud request, the reply is replaced by a validation ticket. A red banner links to the review.
-  - The **⚑ Flag this call as suspected fraud** button sends the call to the queue by hand.
+  - The **Flag this call as suspected fraud** button sends the call to the queue by hand.
   - If the Workforce Manager API is not running, the conversation works exactly as before.
 
 API only: `.\Client_Simulator\.venv\Scripts\python.exe -m uvicorn Workforce_Manager.api:app --port 8002` (from the project folder). Runs are saved in `Workforce_Manager/data/runs/`. The review queue is `Workforce_Manager/data/reviews.db`, the same one the command line uses.

@@ -238,8 +238,11 @@ def test_tts_picks_voice_and_falls_back(monkeypatch):
 def client(monkeypatch):
     from fastapi.testclient import TestClient
     import api
+    monkeypatch.setenv("QA_DATABASE_URL", "")
     api._LLM_CACHE.clear()
     api.CALLS.clear()
+    api.CALL_SCENARIOS.clear()
+    api.QUALITY_REPORTS.clear()
     return TestClient(api.app)
 
 
@@ -247,6 +250,129 @@ def test_backends_endpoint(client):
     j = client.get("/api/backends").json()
     assert set(j["llm"]) == {"groq", "gemini", "ollama", "claude"} and "darija" in j["languages"]
     assert set(j["stt"]) == {"groq", "faster_whisper", "whisper"} and set(j["tts"]) == {"edge", "gtts"}
+
+
+def test_quality_analysis_requires_a_completed_call(client):
+    c = client.post("/api/calls", json={"scenario": "normal"}).json()
+
+    response = client.post(f"/api/calls/{c['call_id']}/quality-analysis", json={})
+
+    assert response.status_code == 409
+
+
+def test_quality_analysis_uses_hidden_call_state_and_persists_report(client, monkeypatch, tmp_path):
+    import api
+    expected = {"call_id": "placeholder", "overall_score_0_to_100": 75}
+    monkeypatch.setattr(api, "analyze_case", lambda case, **kwargs: {
+        **expected,
+        "call_id": case["call_id"],
+        "scenario": case["context"]["scenario"],
+        "advisor_trace": case["context"]["advisor_trace"],
+    })
+    saved = []
+
+    def fake_save(report, path, **kwargs):
+        saved.append((report, path))
+        return 17
+
+    monkeypatch.setattr(api, "save_report", fake_save)
+    c = client.post("/api/calls", json={"scenario": "contestation_carte"}).json()
+    api.QUALITY_ANALYST_DIR = tmp_path
+    ended = client.post(f"/api/calls/{c['call_id']}/end")
+    assert ended.status_code == 200
+
+    response = client.post(
+        f"/api/calls/{c['call_id']}/quality-analysis",
+        json={"advisor_trace": [{"turn": 1, "tools_called": ["search_bank_policies"]}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["call_id"] == c["call_id"]
+    assert response.json()["scenario"] == "contestation_carte"
+    assert response.json()["advisor_trace"][0]["turn"] == 1
+    assert response.json()["database_id"] == 17
+    assert len(saved) == 1
+
+
+def test_quality_analysis_saves_conversation_before_llm_failure(client, monkeypatch):
+    import api
+    saved = []
+    monkeypatch.setattr(api, "save_conversation", lambda case, database, **kwargs: saved.append(case))
+    monkeypatch.setattr(
+        api,
+        "analyze_case",
+        lambda case, **kwargs: (_ for _ in ()).throw(api.QualityAnalystError("Groq denied access.")),
+    )
+    call = client.post("/api/calls", json={"scenario": "normal"}).json()
+    client.post(f"/api/calls/{call['call_id']}/end")
+
+    response = client.post(f"/api/calls/{call['call_id']}/quality-analysis", json={})
+
+    assert response.status_code == 502
+    assert len(saved) == 1
+    assert saved[0]["call_id"] == call["call_id"]
+
+
+def test_quality_analysis_can_run_rules_only_without_calling_groq(client, monkeypatch, tmp_path):
+    import api
+    captured = {}
+    monkeypatch.setattr(api, "QUALITY_ANALYST_DIR", tmp_path)
+    monkeypatch.setattr(api, "save_conversation", lambda *args, **kwargs: None)
+    monkeypatch.setattr(api, "save_report", lambda *args, **kwargs: 23)
+
+    def fake_analyze(case, **kwargs):
+        captured.update(kwargs)
+        return {
+            "call_id": case["call_id"],
+            "database_id": None,
+            "score_global": None,
+            "overall_score_0_to_100": None,
+            "llm_judgment": {"status": "skipped", "provider": "groq"},
+            "rule_evaluation": {"checks": [], "errors": [], "warnings": []},
+            "recommendations": [],
+        }
+
+    monkeypatch.setattr(api, "analyze_case", fake_analyze)
+    call = client.post("/api/calls", json={"scenario": "normal"}).json()
+    client.post(f"/api/calls/{call['call_id']}/end")
+
+    response = client.post(
+        f"/api/calls/{call['call_id']}/quality-analysis",
+        json={"rules_only": True},
+    )
+
+    assert response.status_code == 200
+    assert captured["use_llm"] is False
+    assert response.json()["llm_judgment"]["status"] == "skipped"
+    assert response.json()["score_global"] is None
+
+
+def test_quality_report_history_lists_and_returns_saved_report(client, monkeypatch, tmp_path):
+    import api
+
+    monkeypatch.setattr(api, "QUALITY_ANALYST_DIR", tmp_path)
+    report = {
+        "call_id": "history-call",
+        "scenario": "normal",
+        "overall_score_0_to_100": 88,
+        "llm_judgment": {"status": "completed", "summary": "Conseil clair."},
+    }
+    report_id = api.save_report(
+        report,
+        tmp_path / "data" / "quality_reports.sqlite3",
+    )
+
+    history = client.get("/api/quality/reports")
+    detail = client.get(f"/api/quality/reports/{report_id}")
+    missing = client.get("/api/quality/reports/999")
+
+    assert history.status_code == 200
+    assert history.json()[0]["database_id"] == report_id
+    assert history.json()[0]["summary"] == "Conseil clair."
+    assert detail.status_code == 200
+    assert detail.json()["call_id"] == "history-call"
+    assert detail.json()["stored_at"]
+    assert missing.status_code == 404
 
 
 def test_unusable_llm_is_a_clear_400(client):

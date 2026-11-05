@@ -33,6 +33,7 @@ KPIs and ground truth for the Quality Analyst and the Workforce Manager.
 | api.py + frontend/ | FastAPI backend and Next.js UI |
 | test_client_simulator.py | Tests (25) |
 | test_profanity.py | Tests of the bad-words detection and its effect on the call and the scorecard |
+| [SCENARIO_FRAUDE_CARTE.md](SCENARIO_FRAUDE_CARTE.md) | Fiche de scénario de test : contestation d'un paiement par carte |
 
 ## Install and run
     pip install -r requirements.txt        # Whisper also needs ffmpeg

@@ -11,21 +11,38 @@ Interactive docs: http://localhost:8000/docs
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import uuid
 from collections import Counter
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+load_dotenv(Path(__file__).with_name(".env"), override=False)
+
 from client_simulator import LANGUAGES, SCENARIOS, ClientSimulatorAgent, ConversationState
 from db import store_or_none
 from profanity import LEVEL_NAME, scan as scan_profanity
 from scorecard import score_call
+
+QUALITY_ANALYST_DIR = Path(__file__).resolve().parents[1] / "Quality_Analyst"
+if str(QUALITY_ANALYST_DIR) not in sys.path:
+    sys.path.insert(0, str(QUALITY_ANALYST_DIR))
+from analyst import QualityAnalystError, analyze_case, case_from_simulation
+from storage import (
+    QualityStorageError,
+    get_report,
+    list_reports,
+    save_conversation,
+    save_report,
+)
 
 app = FastAPI(title="Client Simulator API")
 
@@ -43,8 +60,16 @@ PERSISTED: set[str] = set()
 # In-memory store of live calls (reset when the server restarts)
 # --------------------------------------------------------------------------
 CALLS: dict[str, tuple[ClientSimulatorAgent, ConversationState]] = {}
+QUALITY_REPORTS: dict[str, dict] = {}
+CALL_SCENARIOS: dict[str, str] = {}
 MAX_CALLS = 200
 _LLM_CACHE: dict[tuple, object] = {}
+
+
+def quality_database() -> str | Path:
+    return os.getenv("QA_DATABASE_URL") or (
+        QUALITY_ANALYST_DIR / "data" / "quality_reports.sqlite3"
+    )
 
 
 def make_llm(name: Optional[str], role: str = "client", model: Optional[str] = None):
@@ -250,6 +275,13 @@ class Reply(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class QualityAnalysisRequest(BaseModel):
+    advisor_trace: list[dict] = Field(default_factory=list, max_length=40)
+    model: Optional[str] = Field(default=None, max_length=120)
+    thread_id: Optional[str] = Field(default=None, max_length=80)
+    rules_only: bool = False
+
+
 @app.post("/api/calls")
 def start_call(body: StartCall):
     if body.scenario not in SCENARIOS:
@@ -273,8 +305,12 @@ def start_call(body: StartCall):
     st = sim.start(request, wait_seconds=body.wait_seconds)
     call_id = uuid.uuid4().hex[:12]
     if len(CALLS) >= MAX_CALLS:
-        CALLS.pop(next(iter(CALLS)))
+        oldest_call_id = next(iter(CALLS))
+        CALLS.pop(oldest_call_id)
+        QUALITY_REPORTS.pop(oldest_call_id, None)
+        CALL_SCENARIOS.pop(oldest_call_id, None)
     CALLS[call_id] = (sim, st)
+    CALL_SCENARIOS[call_id] = body.scenario
     return view(call_id, sim, st)
 
 
@@ -306,6 +342,104 @@ def end_call(call_id: str):
     if st.status == "active":
         st.status = "closed"
     return view(call_id, sim, st)
+
+
+@app.post("/api/calls/{call_id}/quality-analysis")
+def analyze_completed_call(call_id: str, body: QualityAnalysisRequest):
+    if not body.rules_only and call_id in QUALITY_REPORTS:
+        return QUALITY_REPORTS[call_id]
+    sim, state = get_call(call_id)
+    if state.status == "active":
+        raise HTTPException(409, "Quality analysis is available only after the call ends.")
+    try:
+        case = case_from_simulation(state, CALL_SCENARIOS[call_id], body.advisor_trace)
+        case["call_id"] = call_id
+        persisted_call = STORE.live_call_transcript(call_id) if STORE is not None else None
+        if persisted_call and persisted_call["transcript"]:
+            case["transcript"] = [
+                {
+                    "turn": sum(
+                        1 for previous in persisted_call["transcript"][:index + 1]
+                        if previous["role"] in {"conseiller", "advisor"}
+                    ) if turn["role"] in {"conseiller", "advisor"} else sum(
+                        1 for previous in persisted_call["transcript"][:index]
+                        if previous["role"] in {"conseiller", "advisor"}
+                    ),
+                    "role": turn["role"],
+                    "text": turn["text"],
+                }
+                for index, turn in enumerate(persisted_call["transcript"])
+            ]
+            case["context"].update({
+                "source": "simulator_db",
+                "run_id": persisted_call["run_id"],
+                "profile": persisted_call.get("profile"),
+                "intent": persisted_call.get("intent") or case["context"].get("intent"),
+                "language": persisted_call.get("language") or case["context"].get("language"),
+                "status": persisted_call.get("status") or case["context"].get("status"),
+                "resolved": persisted_call.get("resolved"),
+                "escalated": persisted_call.get("escalated"),
+                "identity_verified": persisted_call.get("identity_verified"),
+                "verification_asked": persisted_call.get("verification_asked"),
+                "is_fraudster": persisted_call.get("is_fraudster"),
+                "waited_s": persisted_call.get("waited_s"),
+            })
+        else:
+            case["context"]["source"] = "relay_fallback"
+            case["context"].setdefault("warnings", []).append({
+                "type": "base_simulateur_indisponible",
+                "description": "L'appel a été évalué depuis l'état Relay en mémoire, car aucune transcription persistée n'était disponible.",
+            })
+        case["context"]["thread_id"] = body.thread_id
+        database = quality_database()
+        save_conversation(
+            case,
+            database,
+            thread_id=body.thread_id,
+            run_id=case["context"].get("run_id"),
+        )
+        report = analyze_case(case, model=body.model, use_llm=not body.rules_only)
+        report["database_id"] = save_report(
+            report,
+            database,
+            case=case,
+            thread_id=body.thread_id,
+            run_id=case["context"].get("run_id"),
+        )
+    except QualityAnalystError as exc:
+        raise HTTPException(502, f"Quality Analyst could not evaluate the call: {exc}") from exc
+    except (QualityStorageError, OSError, RuntimeError) as exc:
+        raise HTTPException(500, f"Quality report could not be stored: {exc}") from exc
+    if not body.rules_only:
+        QUALITY_REPORTS[call_id] = report
+    return report
+
+
+@app.get("/api/quality/reports")
+def quality_report_history(limit: int = Query(default=50, ge=1, le=100)):
+    try:
+        return list_reports(
+            quality_database(),
+            limit=limit,
+        )
+    except (QualityStorageError, ValueError) as exc:
+        raise HTTPException(500, f"Quality report history could not be read: {exc}") from exc
+
+
+@app.get("/api/quality/reports/{report_id}")
+def read_quality_report(report_id: int):
+    if report_id < 1:
+        raise HTTPException(422, "Report ID must be positive.")
+    try:
+        report = get_report(
+            quality_database(),
+            report_id,
+        )
+    except (QualityStorageError, ValueError) as exc:
+        raise HTTPException(500, f"Quality report could not be read: {exc}") from exc
+    if report is None:
+        raise HTTPException(404, "Quality report not found.")
+    return report
 
 
 # --------------------------------------------------------------------------

@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 *.db
+Quality_Analyst/data/*.sqlite3
 
 # Environment secrets
 .env*

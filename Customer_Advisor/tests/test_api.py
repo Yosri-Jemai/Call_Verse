@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -63,11 +64,47 @@ def test_chat_invokes_agent_with_thread_and_returns_response():
     assert config["configurable"]["thread_id"] == str(thread_id)
 
 
-def test_chat_returns_json_429_for_llm_quota_error():
+def test_format_result_includes_bounded_policy_source_trace():
+    policy_result = json.dumps({
+        "found": True,
+        "documents": [{
+            "source": "fees.jsonl",
+            "title": "Transfer fees",
+            "category": "fees",
+            "text": "Demo policy excerpt.",
+            "source_url": "https://example.test/fees",
+            "similarity_score": 0.91,
+        }],
+    })
+    messages = [
+        SimpleNamespace(type="human", content="How much does a transfer cost?", tool_calls=[]),
+        SimpleNamespace(
+            type="ai",
+            content="",
+            tool_calls=[{"name": "search_bank_policies"}],
+        ),
+        SimpleNamespace(
+            type="tool",
+            name="search_bank_policies",
+            content=policy_result,
+            tool_calls=[],
+        ),
+        SimpleNamespace(type="ai", content="The policy says...", tool_calls=[]),
+    ]
+
+    trace = api.extract_audit_trace(messages)
+
+    assert trace["tools_called"] == ["search_bank_policies"]
+    assert trace["policy_sources"][0]["source"] == "fees.jsonl"
+    assert trace["policy_sources"][0]["text"] == "Demo policy excerpt."
+
+
+def test_chat_returns_json_429_for_llm_quota_error(monkeypatch):
     quota_error = ClientError(
         429,
         {"error": {"status": "RESOURCE_EXHAUSTED", "message": "Quota exceeded"}},
     )
+    monkeypatch.setattr(api.settings, "llm_provider", "google")
     agent = FakeAgent(error=quota_error)
     make_request(agent)
 
@@ -298,6 +335,8 @@ def test_create_admin_approval_saves_advisor_explanation(monkeypatch):
     assert response["message"] == "Create expense of $25.00?"
     assert response["details"]["details"]["amount"] == 25
     assert "ON CONFLICT (thread_id)" in cursor.query
+    assert isinstance(cursor.params[0], str)
+    assert cursor.params[1] == str(thread_id)
 
 
 def test_create_admin_approval_rejects_non_financial_actions(monkeypatch):

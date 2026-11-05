@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from dotenv import load_dotenv
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT_SIMULATOR_DIR = ROOT / "Client_Simulator"
+QUALITY_ANALYST_DIR = ROOT / "Quality_Analyst"
+load_dotenv(CLIENT_SIMULATOR_DIR / ".env", override=False)
 sys.path.insert(0, str(CLIENT_SIMULATOR_DIR))
 
 from client_simulator import ClientSimulatorAgent, LANGUAGES, SCENARIOS  # noqa: E402
@@ -55,6 +60,20 @@ def parse_args() -> argparse.Namespace:
         help="Customer Advisor database customer ID to use.",
     )
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--quality-analysis",
+        action="store_true",
+        help="Evaluate the completed call with Quality Analyst using Groq.",
+    )
+    parser.add_argument("--quality-model", help="Groq model used by Quality Analyst.")
+    parser.add_argument("--quality-report", type=Path, help="Optional path to save the QA report JSON.")
+    parser.add_argument(
+        "--quality-db",
+        default=os.getenv("QA_DATABASE_URL") or str(
+            QUALITY_ANALYST_DIR / "data" / "quality_reports.sqlite3"
+        ),
+        help="PostgreSQL URL or SQLite database path for Quality Analyst.",
+    )
     args = parser.parse_args()
 
     if not -1 <= args.mood <= 1:
@@ -200,9 +219,27 @@ def run(args: argparse.Namespace) -> int:
     if state.status == "active":
         state.status = "max_turns"
 
-    summary = simulator.summary(state)
+    summary = simulator.summary(state, include_qa=not args.quality_analysis)
     print("\nSimulation result")
     print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
+    if args.quality_analysis:
+        sys.path.insert(0, str(QUALITY_ANALYST_DIR))
+        try:
+            from analyst import QualityAnalystError, analyze_case, case_from_simulation
+            from storage import QualityStorageError, save_conversation, save_report
+
+            case = case_from_simulation(state, args.scenario)
+            save_conversation(case, args.quality_db)
+            report = analyze_case(case, model=args.quality_model)
+            report["database_id"] = save_report(report, args.quality_db, case=case)
+            rendered_report = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+            if args.quality_report:
+                args.quality_report.parent.mkdir(parents=True, exist_ok=True)
+                args.quality_report.write_text(rendered_report + "\n", encoding="utf-8")
+            print("\nQuality Analyst report")
+            print(rendered_report)
+        except (QualityAnalystError, QualityStorageError, OSError) as exc:
+            raise RuntimeError(f"Quality Analyst could not evaluate the call: {exc}") from exc
     return 0
 
 

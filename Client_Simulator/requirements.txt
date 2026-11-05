@@ -11,3 +11,4 @@ anthropic         # default LLM backend (or google-genai / ollama, see requireme
 edge-tts           # neural voices (Tunisian Arabic, French, English), free, no key
 gTTS               # fallback voice
 python-dotenv
+openai>=1.0

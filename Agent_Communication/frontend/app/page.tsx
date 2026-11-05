@@ -200,6 +200,7 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [safetyNote, setSafetyNote] = useState("");
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
+  const [userRole, setUserRole] = useState<"approver" | "viewer" | null>(null);
   const [wfmOnline, setWfmOnline] = useState(false);
   const [wfmPending, setWfmPending] = useState(0);
   const [wfmFlag, setWfmFlag] = useState<WfmFlag | null>(null);
@@ -787,9 +788,6 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link href="/quality" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
               Quality Analyst
-            </Link>
-            <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-              Admin inbox{approvalRequest ? " · 1" : ""}
             </Link>
             {userRole === "approver" && (
               <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">

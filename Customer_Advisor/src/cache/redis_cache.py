@@ -49,7 +49,7 @@ class RedisJsonCache:
             return None
         return result
 
-    def set(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
+    def set(self, key: str, value: dict[str, Any]) -> None:
         if not settings.redis_cache_enabled:
             return
 
@@ -57,7 +57,6 @@ class RedisJsonCache:
             self._get_client().set(
                 key,
                 json.dumps(value, ensure_ascii=False, separators=(",", ":")),
-                ex=ttl_seconds,
             )
         except RedisError as exc:
             logger.warning("Redis cache write failed; result was not cached: %s", exc)

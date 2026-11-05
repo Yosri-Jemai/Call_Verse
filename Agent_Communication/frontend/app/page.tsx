@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const CLIENT_API = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://127.0.0.1:8001";
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
 const WFM_API = process.env.NEXT_PUBLIC_WFM_API_URL || "http://127.0.0.1:8002";
 
 type Role = "client" | "conseiller";
@@ -27,11 +27,12 @@ type AdvisorResponse = {
   thread_id: string;
   message?: string | null;
   pending_approval: boolean;
-  confirmation?: { message?: string; details?: Record<string, unknown> } | null;
+  confirmation?: { message?: string; admin_message?: string; details?: Record<string, unknown> } | null;
 };
 type ApprovalRequest = {
   id: string;
   threadId: string;
+  message: string;
 };
 type RunMode = "autopilot" | "manual";
 type SpeechEngine = "advisor" | "client";
@@ -42,6 +43,9 @@ const defaultScenarios: Scenario[] = [
   { name: "panne", description: "A card or banking service outage" },
   { name: "campagne", description: "A seasonal campaign inquiry" },
   { name: "vague_de_fraude", description: "A suspected wave of fraud" },
+  { name: "blocage_compte", description: "A deterministic bank-account block request requiring admin approval" },
+  { name: "enregistrement_depense", description: "A deterministic expense-record request requiring admin approval" },
+  { name: "nouveau_client_politique", description: "A new client asks about a bank policy; Redis cache is verified before the call" },
   { name: "contestation_carte", description: "A disputed card transaction" },
   { name: "vishing_otp", description: "A caller pressured to share an OTP" },
   { name: "virement_sans_verification", description: "A rushed transfer with skipped checks" },
@@ -53,6 +57,9 @@ const scenarioNames: Record<string, string> = {
   panne: "Service outage",
   campagne: "Campaign inquiry",
   vague_de_fraude: "Fraud wave",
+  blocage_compte: "Account block · admin approval",
+  enregistrement_depense: "Record expense · admin approval",
+  nouveau_client_politique: "New client · policy question + Redis test",
   contestation_carte: "Card dispute",
   vishing_otp: "Vishing · OTP",
   virement_sans_verification: "Unverified transfer",
@@ -64,6 +71,7 @@ const scenarioIcons: Record<string, string> = {
   panne: "⌁",
   campagne: "✳",
   vague_de_fraude: "⌑",
+  blocage_compte: "⊘",
   contestation_carte: "▣",
   vishing_otp: "⌁",
   virement_sans_verification: "↗",
@@ -71,6 +79,9 @@ const scenarioIcons: Record<string, string> = {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -131,6 +142,7 @@ export default function Home() {
   const [autoplay, setAutoplay] = useState(true);
   const [advisorOnline, setAdvisorOnline] = useState(false);
   const [clientOnline, setClientOnline] = useState(false);
+  const [userRole, setUserRole] = useState<"approver" | "viewer" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [safetyNote, setSafetyNote] = useState("");
@@ -149,7 +161,13 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    if (new URLSearchParams(window.location.search).get("denied") === "approver") {
+      setError("Cette page est réservée aux comptes avec le rôle approver.");
+    }
     void Promise.all([
+      requestJson<{ user: { role: "approver" | "viewer" } }>("/api/auth/me")
+        .then(({ user }) => active && setUserRole(user.role))
+        .catch(() => active && window.location.assign("/login")),
       requestJson<{ status: string }>(`${ADVISOR_API}/health`).then(() => active && setAdvisorOnline(true)).catch(() => active && setAdvisorOnline(false)),
       requestJson<{ ok: boolean }>(`${CLIENT_API}/api/health`).then(() => active && setClientOnline(true)).catch(() => active && setClientOnline(false)),
       requestJson<Scenario[]>(`${CLIENT_API}/api/scenarios`).then((items) => active && setScenarios(items)).catch(() => undefined),
@@ -206,7 +224,11 @@ export default function Home() {
         },
       );
       return {
-        approval: { id: queued.id, threadId: queued.thread_id },
+        approval: {
+          id: queued.id,
+          threadId: queued.thread_id,
+          message: response.message?.trim() || "I’ve sent this request for specialist review. It has not been carried out.",
+        },
       };
     }
     if (!response.message?.trim()) throw new Error("The Customer Advisor returned no reply.");
@@ -320,17 +342,28 @@ export default function Home() {
         language,
         difficulty,
         llm: clientEngine,
-        max_turns: 8,
+        max_turns: scenario === "nouveau_client_politique" ? 2 : 8,
         ...(seed.trim() ? { seed: Number(seed) } : {}),
       };
       if (seed.trim() && !Number.isInteger(Number(seed))) throw new Error("Seed must be a whole number.");
+      let cacheNotice = "";
+      if (scenario === "nouveau_client_politique") {
+        const cacheTest = await requestJson<{ cached: boolean; cache_hit_verified: boolean }>(
+          `${ADVISOR_API}/api/dev/redis-cache-test`,
+          { method: "POST" },
+        );
+        if (!cacheTest.cached || !cacheTest.cache_hit_verified) {
+          throw new Error("Redis did not confirm a cached policy lookup. Check that Redis and the policy index are available.");
+        }
+        cacheNotice = "Redis policy result cached; repeat lookup verified.";
+      }
       const started = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       setCall(started);
-      setNotice(`Session ${started.call_id} · ${started.client.name} joined`);
+      setNotice([`Session ${started.call_id} · ${started.client.name} joined`, cacheNotice].filter(Boolean).join(" · "));
       const opening = [...started.history].reverse().find((message) => message.role === "client");
       if (autoplayRef.current && opening) await playIfEnabled(opening, started.client);
       if (mode === "autopilot") {
@@ -379,7 +412,11 @@ export default function Home() {
     }
   }
 
-  async function advanceSimulation(current: CallSnapshot, advisorText: string): Promise<CallSnapshot> {
+  async function advanceSimulation(
+    current: CallSnapshot,
+    advisorText: string,
+    pendingMessages: Message[] = [],
+  ): Promise<CallSnapshot> {
     const advisorMessage: Message = { role: "conseiller", text: advisorText };
     setCall((previous) => previous ? { ...previous, history: [...previous.history, advisorMessage] } : previous);
     await playIfEnabled(advisorMessage, current.client);
@@ -388,10 +425,36 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: advisorText }),
     });
-    setCall(updated);
-    const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
-    if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
-    return updated;
+    const history = [...updated.history];
+    const pendingNotInSimulator = pendingMessages.filter(
+      (pending) => !history.some((message) => message.role === pending.role && message.text === pending.text),
+    );
+    if (pendingNotInSimulator.length) {
+      let advisorReplyIndex = -1;
+      for (let index = history.length - 1; index >= 0; index -= 1) {
+        if (history[index].role === advisorMessage.role && history[index].text === advisorText) {
+          advisorReplyIndex = index;
+          break;
+        }
+      }
+      history.splice(advisorReplyIndex < 0 ? history.length : advisorReplyIndex, 0, ...pendingNotInSimulator);
+    }
+    const withPendingMessages = { ...updated, history };
+    setCall(withPendingMessages);
+    const clientReply = [...withPendingMessages.history].reverse().find((message) => message.role === "client");
+    if (clientReply && withPendingMessages.status === "active") await playIfEnabled(clientReply, withPendingMessages.client);
+    return withPendingMessages;
+  }
+
+  async function showPendingAdvisorMessage(current: CallSnapshot, text: string): Promise<CallSnapshot> {
+    const paused = {
+      ...current,
+      history: [...current.history, { role: "conseiller" as const, text }],
+    };
+    callRef.current = paused;
+    setCall(paused);
+    await playIfEnabled({ role: "conseiller", text }, current.client);
+    return paused;
   }
 
   async function runAutopilot(initialCall: CallSnapshot, initialThread: string | null) {
@@ -417,9 +480,10 @@ export default function Home() {
       if (!latestClient) throw new Error("The simulator did not provide a customer message.");
       const advisor = await sendToAdvisor(latestClient.text, currentThread);
       if ("approval" in advisor) {
+        await showPendingAdvisorMessage(current, advisor.approval.message);
         setThreadId(advisor.approval.threadId);
         setApprovalRequest(advisor.approval);
-        setSafetyNote("The advisor sent this financial action to the admin approval inbox. The conversation is paused.");
+        setSafetyNote("The request is saved in the specialist review inbox. The conversation is paused until it is reviewed.");
         return;
       }
       currentThread = advisor.thread;
@@ -525,7 +589,13 @@ export default function Home() {
         setBusy(true);
         setAutopilot(true);
         try {
-          const updated = await advanceSimulation(pausedCall, request.result.message.trim());
+          const lastPausedMessage = pausedCall.history[pausedCall.history.length - 1];
+          const pendingMessages = lastPausedMessage?.role === "conseiller" ? [lastPausedMessage] : [];
+          const updated = await advanceSimulation(
+            pausedCall,
+            request.result.message.trim(),
+            pendingMessages,
+          );
           await runAutopilot(updated, request.result.thread_id || approvalRequest.threadId);
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : "The conversation could not continue after review.");
@@ -619,9 +689,21 @@ export default function Home() {
             <Link href="/workforce" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
               Workforce Manager{wfmPending ? ` · ${wfmPending} to review` : ""}
             </Link>
-            <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-              Admin inbox{approvalRequest ? " · 1" : ""}
-            </Link>
+            {userRole === "approver" && (
+              <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+                Admin inbox{approvalRequest ? " · 1" : ""}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] transition hover:bg-white hover:text-forest"
+            >
+              Sign out
+            </button>
             <div className="hidden items-center gap-2 rounded-full border border-[#e6ebe5] bg-white px-3 py-2 text-xs font-medium text-[#68756d] sm:flex">
               <span className="relative flex h-2 w-2">
                 <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${advisorOnline && clientOnline ? "animate-ping bg-emerald-500" : "bg-rose-400"}`} />

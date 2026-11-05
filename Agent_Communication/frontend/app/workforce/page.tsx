@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const WFM_API = process.env.NEXT_PUBLIC_WFM_API_URL || "http://127.0.0.1:8002";
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
 
 type Tab = "room" | "approvals";
 type Ev = { t: number; kind: string; [key: string]: unknown };

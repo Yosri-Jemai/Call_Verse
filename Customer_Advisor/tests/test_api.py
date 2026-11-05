@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from uuid import uuid4
+import json
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -230,6 +231,7 @@ class ApprovalCursor:
         self.one_rows = list(one_rows)
         self.query = ""
         self.params = None
+        self.executions = []
 
     def __enter__(self):
         return self
@@ -240,6 +242,7 @@ class ApprovalCursor:
     def execute(self, query, params=None):
         self.query = query
         self.params = params
+        self.executions.append((query, params))
 
     def fetchall(self):
         return self.rows
@@ -261,14 +264,27 @@ def approval_connection(cursor):
     yield ApprovalConnection(cursor)
 
 
-def approval_row(approval_id, thread_id, status="pending", result=None):
+def approval_row(approval_id, thread_id, status="pending", result=None,
+                 action="create_transaction", message="Create expense of $25.00?",
+                 details=None):
+    stored_details = details if details is not None else {
+        "details": {"amount": 25, "account": "Demo"}
+    }
+    stored_details = {
+        **stored_details,
+        "customer": {
+            "id": 1,
+            "name": "Demo Customer",
+            "email": "demo@cashy.local",
+        },
+    }
     return (
         approval_id,
         thread_id,
         1,
-        "create_transaction",
-        "Create expense of $25.00?",
-        {"details": {"amount": 25, "account": "Demo"}},
+        action,
+        message,
+        stored_details,
         status,
         datetime.now(timezone.utc),
         None,
@@ -276,10 +292,16 @@ def approval_row(approval_id, thread_id, status="pending", result=None):
     )
 
 
+def approval_customer_row():
+    return (1, "Demo Customer", "demo@cashy.local")
+
+
 def test_create_admin_approval_saves_advisor_explanation(monkeypatch):
     approval_id = uuid4()
     thread_id = uuid4()
-    cursor = ApprovalCursor(one_rows=[approval_row(approval_id, thread_id)])
+    cursor = ApprovalCursor(
+        one_rows=[approval_customer_row(), approval_row(approval_id, thread_id)]
+    )
     monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
 
     response = api.create_admin_approval(
@@ -288,7 +310,8 @@ def test_create_admin_approval_saves_advisor_explanation(monkeypatch):
             customer_id=1,
             confirmation={
                 "action": "create_transaction",
-                "message": "Create expense of $25.00?",
+                "message": "I’ll send this transaction request for specialist approval.",
+                "admin_message": "Create expense of $25.00?",
                 "details": {"amount": 25, "account": "Demo"},
             },
         )
@@ -297,7 +320,15 @@ def test_create_admin_approval_saves_advisor_explanation(monkeypatch):
     assert response["id"] == str(approval_id)
     assert response["message"] == "Create expense of $25.00?"
     assert response["details"]["details"]["amount"] == 25
+    assert response["details"]["customer"] == {
+        "id": 1,
+        "name": "Demo Customer",
+        "email": "demo@cashy.local",
+    }
     assert "ON CONFLICT (thread_id)" in cursor.query
+    assert str(UUID(cursor.params[0])) == cursor.params[0]
+    assert cursor.params[1] == str(thread_id)
+    assert isinstance(cursor.params[1], str)
 
 
 def test_create_admin_approval_rejects_non_financial_actions(monkeypatch):
@@ -318,6 +349,125 @@ def test_create_admin_approval_rejects_non_financial_actions(monkeypatch):
     assert exc_info.value.status_code == 422
 
 
+def test_create_admin_approval_accepts_account_block_and_saves_reason(monkeypatch):
+    approval_id = uuid4()
+    thread_id = uuid4()
+    cursor = ApprovalCursor(
+        one_rows=[approval_customer_row(), approval_row(approval_id, thread_id)]
+    )
+    monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
+
+    response = api.create_admin_approval(
+        api.ApprovalCreateRequest(
+            thread_id=thread_id,
+            customer_id=1,
+            confirmation={
+                "action": "block_account",
+                "message": "I’ll refer your account-block request for specialist approval.",
+                "admin_message": "Block Checking: suspicious activity.",
+                "details": {
+                    "account": "Checking",
+                    "reason": "suspicious activity",
+                },
+            },
+        )
+    )
+
+    assert response["id"] == str(approval_id)
+    assert "block_account" in api.APPROVAL_ACTIONS
+    assert cursor.params[3] == "block_account"
+    assert json.loads(cursor.params[5]) == {
+        "details": {
+            "account": "Checking",
+            "reason": "suspicious activity",
+        },
+        "customer": {
+            "id": 1,
+            "name": "Demo Customer",
+            "email": "demo@cashy.local",
+        },
+    }
+
+
+def test_create_admin_approval_accepts_manual_service_review(monkeypatch):
+    approval_id = uuid4()
+    thread_id = uuid4()
+    details = {
+        "request_type": "transaction_dispute",
+        "summary": "Dispute an unrecognized card charge.",
+        "reason": "The customer says they did not make the purchase.",
+        "execution": "Manual follow-up only.",
+    }
+    cursor = ApprovalCursor(
+        one_rows=[
+            approval_customer_row(),
+            approval_row(
+                approval_id,
+                thread_id,
+                action="manual_service_review",
+                message=details["summary"],
+                details={"details": details},
+            )
+        ]
+    )
+    monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
+
+    response = api.create_admin_approval(
+        api.ApprovalCreateRequest(
+            thread_id=thread_id,
+            customer_id=1,
+            confirmation={
+                "action": "manual_service_review",
+                "message": "I’ll refer your request to a specialist for review.",
+                "admin_message": details["summary"],
+                "details": details,
+            },
+        )
+    )
+
+    assert response["action"] == "manual_service_review"
+    assert response["message"] == details["summary"]
+    assert response["details"]["details"] == details
+    assert response["details"]["customer"]["name"] == "Demo Customer"
+    assert response["details"]["customer"]["email"] == "demo@cashy.local"
+    assert cursor.params[3] == "manual_service_review"
+
+
+def test_create_admin_approval_rejects_unknown_customer(monkeypatch):
+    cursor = ApprovalCursor()
+    monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
+
+    with pytest.raises(HTTPException) as exc_info:
+        api.create_admin_approval(
+            api.ApprovalCreateRequest(
+                thread_id=uuid4(),
+                customer_id=999,
+                confirmation={
+                    "action": "create_transaction",
+                    "message": "Create expense?",
+                },
+            )
+        )
+
+    assert exc_info.value.status_code == 404
+    assert len(cursor.executions) == 1
+    assert "SELECT id, name, email FROM customers" in cursor.query
+
+
+def test_approval_table_migration_allows_account_block(monkeypatch):
+    cursor = ApprovalCursor()
+    monkeypatch.setattr(api, "get_connection", lambda: approval_connection(cursor))
+
+    api.ensure_approval_table()
+
+    assert any("DROP CONSTRAINT IF EXISTS admin_approval_requests_action_check" in query
+               for query, _ in cursor.executions)
+    assert any("'block_account'" in query and "ADD CONSTRAINT" in query
+               for query, _ in cursor.executions)
+    assert any("'manual_service_review'" in query and "ADD CONSTRAINT" in query
+               for query, _ in cursor.executions)
+
+
 def test_admin_decision_resumes_paused_chat_and_records_result(monkeypatch):
     approval_id = uuid4()
     thread_id = uuid4()
@@ -336,9 +486,12 @@ def test_admin_decision_resumes_paused_chat_and_records_result(monkeypatch):
         ApprovalCursor(one_rows=[before]),
         ApprovalCursor(one_rows=[after]),
     ]
+    used_cursors = []
 
     def next_connection():
-        return approval_connection(cursors.pop(0))
+        cursor = cursors.pop(0)
+        used_cursors.append(cursor)
+        return approval_connection(cursor)
 
     monkeypatch.setattr(api, "get_connection", next_connection)
     resumed = []
@@ -360,3 +513,4 @@ def test_admin_decision_resumes_paused_chat_and_records_result(monkeypatch):
     assert resumed[0][0].thread_id == thread_id
     assert resumed[0][0].approved is True
     assert resumed[0][0].customer_id == 1
+    assert used_cursors[1].params[-1] == str(approval_id)

@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     # Optional Redis cache for static bank-policy retrieval results.
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_cache_enabled: bool = True
-    redis_policy_cache_ttl_seconds: int = Field(default=300, ge=1)
 
     # Local API — keep loopback binding unless deploying behind authenticated infrastructure.
     api_host: str = "127.0.0.1"

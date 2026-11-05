@@ -129,7 +129,11 @@ Redis caches only the results of bank-policy searches. Chroma remains the source
 of truth, and customer balances, transactions, profiles, and LLM responses are
 never placed in this cache. Cache keys are hashed and scoped by the normalized
 question, category, current date, embedding model, and retrieval settings. Entries
-expire after five minutes by default.
+have no expiration and are shared by all advisor instances connected to this Redis
+database. The Redis container is configured as an in-memory cache: stopping or
+restarting it clears the entries. To avoid silently evicting old entries, Redis
+uses `noeviction` with a 128 MB limit; once full, new cache writes fail and Chroma
+continues to serve uncached searches.
 
 Start Docker Desktop, then from the repository root run:
 
@@ -144,9 +148,8 @@ available. To check it, run:
 docker compose -f .\Customer_Advisor\docker-compose.redis.yml ps
 ```
 
-Configure `REDIS_URL`, `REDIS_CACHE_ENABLED`, and
-`REDIS_POLICY_CACHE_TTL_SECONDS` in `.env` to change the connection, disable the
-cache, or tune its expiry. Redis is an optional performance layer: if it is
+Configure `REDIS_URL` and `REDIS_CACHE_ENABLED` in `.env` to change the connection
+or disable the cache. Redis is an optional performance layer: if it is
 disabled or unavailable, the agent logs the cache failure and searches Chroma
 normally. No Redis password is configured because the container binds only to
 the local machine; do not expose that port publicly.
@@ -195,7 +198,7 @@ Example request:
 }
 ```
 
-The response includes a `thread_id`; send it with later messages to continue the same conversation. Write tools return `pending_approval: true` and a `confirmation` object before changing data. To resume, send the same thread ID and an `approved` boolean:
+The response includes a `thread_id`; send it with later messages to continue the same conversation. Financial transaction changes and bank-account blocks return `pending_approval: true` and a `confirmation` object before changing data. The dashboard displays the advisor's pending response in the transcript before pausing and queues a separate admin summary. The admin inbox stores the request and resumes the same thread after a decision, including a snapshot of the customer's ID, name, and email loaded from PostgreSQL. A name/email profile update is a limited direct change; account blocks set `accounts.is_active` to `false` only after admin approval. Unsupported services such as card blocks, transaction disputes, actual transfers, limit changes, and other profile changes can be sent for manual follow-up. Approving a manual-service request does not execute the bank operation or change customer data; it only authorizes an administrator to handle it outside this prototype. Requests to bypass identity/security controls, use credentials/one-time codes, or perform unauthorized actions can be saved as review-only entries; neither the advisor nor an admin approval can execute those requests. To resume an interrupted write, send the same thread ID and an `approved` boolean:
 
 ```json
 {
@@ -270,6 +273,8 @@ The browser page is a small client served by FastAPI from the same origin and po
 | `src/tools/create_transaction.py` | Prepares and records a transaction after an explicit LangGraph confirmation. |
 | `src/tools/update_transaction.py` | Updates a transaction after an explicit LangGraph confirmation. |
 | `src/tools/delete_transaction.py` | Deletes a transaction after an explicit LangGraph confirmation. |
+| `src/tools/block_account.py` | Requests admin approval before marking the active customer's exact bank account inactive. |
+| `src/tools/request_manual_service_review.py` | Sends unsupported high-impact requests to specialists for follow-up, or records restricted requests for review only, without modifying customer data. |
 | `src/tools/generate_chart.py` | Queries financial data and creates chart images. |
 
 ### Local chat page

@@ -95,7 +95,8 @@ def update_transaction(
     # --- Confirmation gate ---
     confirmation = {
         "action": "update_transaction",
-        "message": f"Update transaction #{transaction_id}?",
+        "message": "I’ll send this transaction change for specialist approval. It has not been applied yet.",
+        "admin_message": f"Update transaction #{transaction_id}?",
         "current": current,
         "changes": changes,
     }

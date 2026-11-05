@@ -78,7 +78,8 @@ def create_transaction(
     # --- Confirmation gate ---
     confirmation = {
         "action": "create_transaction",
-        "message": f"Create {transaction_type} of ${amount:.2f} on {account_full_name}?",
+        "message": "I’ll send this transaction request for specialist approval. It has not been recorded yet.",
+        "admin_message": f"Create {transaction_type} of ${amount:.2f} on {account_full_name}?",
         "details": {
             "type": transaction_type,
             "amount": float(amount),

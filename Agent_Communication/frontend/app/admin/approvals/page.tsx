@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
 
 type Approval = {
   id: string;
@@ -20,6 +20,9 @@ type Approval = {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -134,7 +137,19 @@ export default function AdminApprovalsPage() {
               <div className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Admin review</div>
             </div>
           </Link>
-          <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</Link>
+          <div className="flex items-center gap-2">
+            <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</Link>
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] hover:bg-[#f5f7f3]"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -151,7 +166,7 @@ export default function AdminApprovalsPage() {
         </div>
 
         <div role="note" className="mb-6 rounded-2xl border border-[#e7e9dc] bg-[#fffdf3] px-4 py-3.5 text-[10px] leading-5 text-[#77704f]">
-          <strong className="font-semibold text-[#615a3e]">Local demo inbox.</strong> This page has no administrator sign-in or role-based access control. Use it only in the local demo environment with test data.
+          <strong className="font-semibold text-[#615a3e]">Approver access.</strong> Only signed-in approver accounts can open this inbox. Keep using synthetic data; backend approval authorization is being rolled out separately.
         </div>
 
         <div className="mb-5 flex items-center justify-between border-b border-[#e4e9e2]">

@@ -2,7 +2,7 @@
 
 Cashy is a Python banking-support agent backend intended to be called by a separate Next.js application. It uses LangGraph and PostgreSQL tools, provides an HTTP API, and includes a tiny standalone browser chat page for local testing.
 
-> **Prototype safety:** The API is for local testing with demo data. It has no caller authentication or customer-level authorization. Do not expose it to the internet or load real customer data until identity verification, authorization, audit logging, and sensitive-data controls are implemented. Never ingest passwords, PINs, CVVs, full card numbers, or one-time codes.
+> **Prototype safety:** The API is for local testing with demo data. Administrator login endpoints exist, but authentication and authorization have not yet been applied to every business or approval endpoint, and customer-level authorization is absent. Do not expose it to the internet or load real customer data until identity verification, authorization, audit logging, and sensitive-data controls are implemented. Never ingest passwords, PINs, CVVs, full card numbers, or one-time codes.
 
 ## Installation après un clone
 
@@ -154,9 +154,37 @@ the local machine; do not expose that port publicly.
 ## HTTP endpoints
 
 - `GET /health` — readiness status
+- `POST /auth/login` — authenticate an administrator and issue a short-lived JWT
+- `GET /auth/me` — return the authenticated administrator's current profile
+- `POST /auth/logout` — confirm client-side token disposal
 - `POST /api/chat` — send a message and optionally continue a thread
 - `GET /docs` — interactive OpenAPI docs for local testing
 - `GET /` — minimal standalone chat page, served by the local API
+
+### Administrator authentication
+
+Administrator accounts are stored in the `admin_users` PostgreSQL table. Apply
+the migration once, create a first account, and configure a private JWT signing
+secret before using the authentication endpoints:
+
+```powershell
+psql -U postgres -d cashy_banking -f scripts\migrations\001_create_admin_users.sql
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Put the generated value in Customer_Advisor\.env as JWT_SECRET=...
+python scripts\migrations\create_admin_user.py approver1 approver
+```
+
+`JWT_SECRET` must be a random value of at least 32 bytes; never commit it or put
+it in `.env.example`. Tokens use HS256 and expire after 30 minutes by default.
+`JWT_EXPIRE_MINUTES` can be set between 30 and 60; `JWT_ISSUER` and
+`JWT_AUDIENCE` default to `cashy-agent` and `cashy-api`.
+
+Login uses Argon2 hashes, returns the same 401 message for unknown usernames and
+incorrect passwords, and locks an account for 15 minutes after five failed
+password attempts. Inactive and locked accounts are also rejected. The current
+account role and active status are loaded from PostgreSQL for authenticated
+requests. Logout is stateless: the client must discard its token; it remains
+valid until expiration unless the account is deactivated.
 
 Example request:
 
@@ -176,7 +204,7 @@ The response includes a `thread_id`; send it with later messages to continue the
 }
 ```
 
-The standalone test page calls the API on the same origin. The API also accepts browser requests from `http://localhost:3000` and `http://127.0.0.1:3000` for a local Next.js frontend. The API binds to loopback by default. Before deployment, add authentication, authorization, and an explicit CORS policy appropriate for the hosting environment.
+The standalone test page calls the API on the same origin. The API also accepts browser requests from `http://localhost:3000` and `http://127.0.0.1:3000` for a local Next.js frontend. The API binds to loopback by default. Authentication is being introduced incrementally: application and approval endpoints are not all protected yet. Keep the service local until authorization has been applied to every relevant route and CORS is configured for the hosting environment.
 
 ## Architecture
 

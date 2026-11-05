@@ -23,6 +23,24 @@ services against test/demo banking data only. If Docker Desktop is running, the
 launcher also starts the optional local Redis cache; without Docker, the agent
 continues to work but policy searches are not cached.
 
+The Relay opens on a sign-in page. Before the first login, apply the
+administrator-account migration to the `cashy_banking` PostgreSQL database,
+set a private `JWT_SECRET` of at least 32 random bytes in
+`Customer_Advisor\.env`, and create an account:
+
+```powershell
+psql -U postgres -d cashy_banking -f .\Customer_Advisor\scripts\migrations\001_create_admin_users.sql
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Copy the generated value to Customer_Advisor\.env as JWT_SECRET=...
+.\Customer_Advisor\.venv\Scripts\python.exe .\Customer_Advisor\scripts\migrations\create_admin_user.py approver1 approver
+```
+
+The account-creation script prompts for the password without echoing it.
+The approval inbox is available only to `approver` accounts; `viewer` accounts
+can access the simulation dashboard but not approval decisions. This is a
+frontend access gate; do not expose the demo APIs publicly while backend
+authorization is still being completed.
+
 To use different ports:
 
 ```powershell

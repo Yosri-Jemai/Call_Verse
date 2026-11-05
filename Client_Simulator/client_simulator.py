@@ -69,6 +69,12 @@ INTENTS = {
     "carte_bloquee":        dict(urgency=3, openers=[
         "Bonjour, ma carte est bloquée et je ne peux plus payer.",
         "Ma carte a été avalée par le distributeur, que dois-je faire ?"]),
+    "blocage_compte":       dict(urgency=3, openers=[
+        "Je veux bloquer mon compte Chase Personal Checking : j'ai repéré une activité suspecte."]),
+    "enregistrement_depense": dict(urgency=2, openers=[
+        "Veuillez enregistrer ma dépense de 42 $ chez Whole Foods, catégorie Groceries, depuis Chase Personal Checking."]),
+    "nouveau_client_politique": dict(urgency=1, openers=[
+        "Je suis nouveau client. Quel est le plafond du paiement sans contact par transaction ?"]),
     "prelevement_conteste": dict(urgency=2, openers=[
         "Il y a un prélèvement sur mon compte que je n'ai jamais autorisé.",
         "Je conteste un prélèvement de {amount} dinars."]),
@@ -271,6 +277,15 @@ SCENARIOS = {
     "normal": LoadScenario("normal", 1.0, {
         Profile.NEW: .15, Profile.LOYAL: .45, Profile.DISSATISFIED: .15,
         Profile.PREMIUM: .15, Profile.AT_RISK: .10}, incident_rate=0.3),
+    "enregistrement_depense": LoadScenario("enregistrement_depense", 1.0, {
+        Profile.NEW: .20, Profile.LOYAL: .40, Profile.DISSATISFIED: .20,
+        Profile.PREMIUM: .20},
+        incident_rate=0.0, intent_only="enregistrement_depense",
+        description="Deterministic request to record a $42 grocery expense; recording requires admin approval."),
+    "nouveau_client_politique": LoadScenario("nouveau_client_politique", 1.0, {
+        Profile.NEW: 1.0},
+        incident_rate=0.0, intent_only="nouveau_client_politique",
+        description="A new customer asks about the contactless-payment limit; the scenario verifies Redis caching."),
     "fin_de_mois": LoadScenario("fin_de_mois", 2.5, {
         Profile.NEW: .10, Profile.LOYAL: .40, Profile.DISSATISFIED: .25,
         Profile.PREMIUM: .15, Profile.AT_RISK: .10},
@@ -287,6 +302,11 @@ SCENARIOS = {
         Profile.NEW: .10, Profile.LOYAL: .30, Profile.DISSATISFIED: .10,
         Profile.PREMIUM: .10, Profile.AT_RISK: .40},
         {"fraude_signalee": 5, "carte_bloquee": 2}, incident_rate=0.5),
+    "blocage_compte": LoadScenario("blocage_compte", 1.0, {
+        Profile.NEW: .20, Profile.LOYAL: .40, Profile.DISSATISFIED: .20,
+        Profile.PREMIUM: .20},
+        incident_rate=0.0, intent_only="blocage_compte",
+        description="Deterministic request to block Chase Personal Checking for suspicious activity; requires admin approval."),
     # ---- compliance-trap scenarios: they measure the advisor's PROCESS, not only the outcome ----
     "contestation_carte": LoadScenario("contestation_carte", 1.0, {
         Profile.NEW: .20, Profile.LOYAL: .40, Profile.DISSATISFIED: .15, Profile.PREMIUM: .25},
@@ -648,7 +668,13 @@ class ClientSimulatorAgent:
         st.sentiment = sentiment_of(st)
         if st.status == "active":
             st.history.append(("client", req.opening_message))
-            if self._has_llm(req):
+            if self._has_llm(req) and req.intent not in {
+                "blocage_compte",
+                "enregistrement_depense",
+                "nouveau_client_politique",
+                "contestation_carte",
+                "vishing_otp",
+            }:
                 self._llm_opening(st)
         return st
 
@@ -694,6 +720,10 @@ class ClientSimulatorAgent:
 
     # ---- phase 2: update (mood, fraud pressure, end of call) --------------------
     def update(self, st: ConversationState, f: dict) -> None:
+        if st.request.intent == "nouveau_client_politique":
+            if st.turn >= 2:
+                st.status = "max_turns"
+            return
         if f["identite"]:
             st.verification_asked = True
         st.sensitive_requests += int(f["demande_sensible"])
@@ -828,6 +858,8 @@ class ClientSimulatorAgent:
     # ---- text generation ---------------------------------------------------
     def _client_turn(self, st: ConversationState, f: dict):
         """Returns (text, mood_adjust, hang_up, emotion). LLM first, rules as the safety net."""
+        if st.request.intent == "nouveau_client_politique":
+            return st.request.opening_message, 0.0, False, None
         if self._has_llm(st.request):
             try:
                 out = self._llm_turn(st, f)

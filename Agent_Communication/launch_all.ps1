@@ -4,7 +4,9 @@ param(
     [ValidateRange(1024, 65535)]
     [int]$ClientApiPort = 8001,
     [ValidateRange(1024, 65535)]
-    [int]$UiPort = 3000
+    [int]$UiPort = 3000,
+    [ValidateRange(1024, 65535)]
+    [int]$WfmPort = 8002
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +14,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $clientDir = Join-Path $root "Client_Simulator"
 $advisorDir = Join-Path $root "Customer_Advisor"
 $frontendDir = Join-Path $PSScriptRoot "frontend"
-$ports = @($AdvisorPort, $ClientApiPort, $UiPort) | Select-Object -Unique
+$ports = @($AdvisorPort, $ClientApiPort, $UiPort, $WfmPort) | Select-Object -Unique
 
 foreach ($requiredPath in @(
     (Join-Path $clientDir ".venv\Scripts\Activate.ps1"),
@@ -52,6 +54,7 @@ function Test-HealthyService {
 $advisorAlreadyRunning = $false
 $clientAlreadyRunning = $false
 $uiAlreadyRunning = $false
+$wfmAlreadyRunning = $false
 $conflicts = @()
 foreach ($port in ($occupiedPorts | Select-Object -ExpandProperty LocalPort -Unique)) {
     $listeners = @($occupiedPorts | Where-Object { $_.LocalPort -eq $port })
@@ -69,6 +72,12 @@ foreach ($port in ($occupiedPorts | Select-Object -ExpandProperty LocalPort -Uni
             -ExpectedProperty "ok" `
             -ExpectedValue $true
         $clientAlreadyRunning = $healthy
+    } elseif ($port -eq $WfmPort) {
+        $healthy = Test-HealthyService `
+            -Url "http://127.0.0.1:$WfmPort/api/health" `
+            -ExpectedProperty "service" `
+            -ExpectedValue "workforce_manager"
+        $wfmAlreadyRunning = $healthy
     } elseif ($port -eq $UiPort) {
         try {
             $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$UiPort" -TimeoutSec 3
@@ -166,18 +175,23 @@ $clientActivation = ".\.venv\Scripts\Activate.ps1"
 $corsOrigins = "http://localhost:$UiPort,http://127.0.0.1:$UiPort"
 $advisorCommand = "`$env:API_PORT = '$AdvisorPort'; `$env:CORS_ORIGINS = '$corsOrigins'; . '$advisorActivation'; python app.py"
 $clientCommand = "`$env:CORS_ORIGINS = '$corsOrigins'; . '$clientActivation'; python -m uvicorn api:app --host 127.0.0.1 --port $ClientApiPort"
-$uiCommand = "`$env:NEXT_PUBLIC_ADVISOR_API_URL = 'http://127.0.0.1:$AdvisorPort'; `$env:NEXT_PUBLIC_CLIENT_API_URL = 'http://127.0.0.1:$ClientApiPort'; npm.cmd run dev -- --hostname 127.0.0.1 --port $UiPort"
+$wfmCommand = "`$env:CORS_ORIGINS = '$corsOrigins'; & '.\Client_Simulator\.venv\Scripts\python.exe' -m uvicorn Workforce_Manager.api:app --host 127.0.0.1 --port $WfmPort"
+$uiCommand = "`$env:NEXT_PUBLIC_ADVISOR_API_URL = 'http://127.0.0.1:$AdvisorPort'; `$env:NEXT_PUBLIC_CLIENT_API_URL = 'http://127.0.0.1:$ClientApiPort'; `$env:NEXT_PUBLIC_WFM_API_URL = 'http://127.0.0.1:$WfmPort'; npm.cmd run dev -- --hostname 127.0.0.1 --port $UiPort"
 
-Write-Host "Starting the Customer Advisor API, Client Simulator API, and Relay dashboard..."
+Write-Host "Starting the Customer Advisor API, Client Simulator API, Workforce Manager API, and Relay dashboard..."
 if (-not $advisorAlreadyRunning) {
     Start-AppTerminal -Title "Customer Advisor API :$AdvisorPort" -WorkingDirectory $advisorDir -Command $advisorCommand
 }
 if (-not $clientAlreadyRunning) {
     Start-AppTerminal -Title "Client Simulator API :$ClientApiPort" -WorkingDirectory $clientDir -Command $clientCommand
 }
+if (-not $wfmAlreadyRunning) {
+    Start-AppTerminal -Title "Workforce Manager API :$WfmPort" -WorkingDirectory $root -Command $wfmCommand
+}
 
 Wait-ForEndpoint -Url "http://127.0.0.1:$AdvisorPort/health" -ServiceName "Customer Advisor API"
 Wait-ForEndpoint -Url "http://127.0.0.1:$ClientApiPort/api/health" -ServiceName "Client Simulator API"
+Wait-ForEndpoint -Url "http://127.0.0.1:$WfmPort/api/health" -ServiceName "Workforce Manager API"
 
 if (-not $uiAlreadyRunning) {
     Start-AppTerminal -Title "Relay Agent Communication UI :$UiPort" -WorkingDirectory $frontendDir -Command $uiCommand
@@ -188,5 +202,6 @@ Write-Host ""
 Write-Host "Relay dashboard: http://127.0.0.1:$UiPort"
 Write-Host "Customer Advisor API: http://127.0.0.1:$AdvisorPort"
 Write-Host "Client Simulator API: http://127.0.0.1:$ClientApiPort"
+Write-Host "Workforce Manager: http://127.0.0.1:$UiPort/workforce (API http://127.0.0.1:$WfmPort)"
 Write-Host "Use the dashboard to choose a scenario, mood, language, and response mode."
 Write-Host "Close each service window or press Ctrl+C in it to stop that process."

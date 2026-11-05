@@ -59,7 +59,8 @@ def delete_transaction(transaction_id: int, customer_id: int | None = None) -> s
     # --- Confirmation gate ---
     confirmation = {
         "action": "delete_transaction",
-        "message": f"Delete transaction #{transaction_id} and {entry_count} entries?",
+        "message": "I’ll send this deletion request for specialist approval. Nothing has been deleted.",
+        "admin_message": f"Delete transaction #{transaction_id} and {entry_count} entries?",
         "details": details,
         "entries_to_delete": entry_count,
     }

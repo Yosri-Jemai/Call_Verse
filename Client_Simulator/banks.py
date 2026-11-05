@@ -16,6 +16,10 @@ chosen language directly (see the prompts in client_simulator.py).
 OPENERS_DA = {
     "carte_bloquee": ["3aslema, el carte mte3i tbloketli w ma najemch nkhalles.",
                       "El carte mte3i 3alqet fil distributeur, chnowa na3mel tawa ?"],
+    "blocage_compte": ["N7eb nblocki compte Chase Personal Checking tawa, l9it 7araka mchabha.",
+                       "L9it 7aja ghalta fi compte Chase Personal Checking, n7eb nblockih tawa."],
+    "enregistrement_depense": ["N7eb nesajjel masrouf $42 mte3 groceries fi Whole Foods men Chase Personal Checking."],
+    "nouveau_client_politique": ["Ena client jdid. 9addeh el plafond mta3 paiement sans contact fi transaction wa7da ?"],
     "prelevement_conteste": ["Fama prélèvement fil compte mte3i ma 3titehch el mowafqa 3lih.",
                              "Nest3ardh prélèvement mte3 {amount} dinars, ma 3andi 3lih 3ilm."],
     "virement_retard": ["El virement mte3i mte3 {amount} dinars mazel ma wselni.",
@@ -43,6 +47,10 @@ OPENERS_DA = {
 OPENERS_EN = {
     "carte_bloquee": ["Hello, my card is blocked and I can't pay anymore.",
                       "The ATM swallowed my card, what should I do?"],
+    "blocage_compte": ["Please block my Chase Personal Checking account; I noticed suspicious activity.",
+                       "There's suspicious activity on my Chase Personal Checking account. Please block it now."],
+    "enregistrement_depense": ["Please record my $42 grocery expense at Whole Foods from Chase Personal Checking."],
+    "nouveau_client_politique": ["I'm a new customer. What is the contactless payment limit per transaction?"],
     "prelevement_conteste": ["There's a direct debit on my account that I never authorized.",
                              "I'm disputing a {amount} dinar debit."],
     "virement_retard": ["My transfer of {amount} dinars still hasn't arrived.",

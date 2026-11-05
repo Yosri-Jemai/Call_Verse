@@ -2,7 +2,7 @@
 Run with: pytest -q test_qa_memory.py   (no external library, no network)."""
 import json
 
-from client_simulator import SCENARIOS, ClientSimulatorAgent
+from client_simulator import SCENARIOS, ClientSimulatorAgent, Profile
 from judge import rule_analyse
 from memory import contradictions, is_repeat, memory_block, overused_phrases
 from scorecard import score_call
@@ -98,6 +98,79 @@ def test_trap_openers_exist_in_every_language():
     sim = ClientSimulatorAgent(seed=4, language_weights={"darija": 1.0})
     for name in ("contestation_carte", "vishing_otp", "virement_sans_verification"):
         assert all("{" not in r.opening_message for r in sim.generate_requests(name, 5))
+
+
+def test_account_block_scenario_always_generates_an_account_block_request():
+    for language in ("fr", "en", "darija"):
+        llm_calls = []
+        sim = ClientSimulatorAgent(
+            seed=12,
+            language_weights={language: 1.0},
+            llm=lambda prompt: llm_calls.append(prompt) or "",
+        )
+        requests = sim.generate_requests("blocage_compte", 10)
+
+        assert requests
+        assert {request.intent for request in requests} == {"blocage_compte"}
+        assert not any(request.is_fraudster for request in requests)
+        assert all("{" not in request.opening_message for request in requests)
+        assert all("Chase Personal Checking" in request.opening_message for request in requests)
+        state = sim.start(requests[0])
+        assert state.history[0][1] == requests[0].opening_message
+        assert llm_calls == []
+
+
+def test_expense_scenario_always_requests_a_specific_approval_gated_write():
+    for language in ("fr", "en", "darija"):
+        llm_calls = []
+        sim = ClientSimulatorAgent(
+            seed=12,
+            language_weights={language: 1.0},
+            llm=lambda prompt: llm_calls.append(prompt) or "",
+        )
+        requests = sim.generate_requests("enregistrement_depense", 10)
+
+        assert requests
+        assert {request.intent for request in requests} == {"enregistrement_depense"}
+        assert not any(request.is_fraudster for request in requests)
+        assert all("42" in request.opening_message for request in requests)
+        assert all("Whole Foods" in request.opening_message for request in requests)
+        assert all("Chase Personal Checking" in request.opening_message for request in requests)
+        state = sim.start(requests[0])
+        assert state.history[0][1] == requests[0].opening_message
+        assert llm_calls == []
+
+
+def test_new_customer_policy_scenario_is_deterministic_and_uses_no_simulator_llm():
+    for language in ("fr", "en", "darija"):
+        llm_calls = []
+        sim = ClientSimulatorAgent(
+            seed=12,
+            language_weights={language: 1.0},
+            llm=lambda prompt: llm_calls.append(prompt) or "",
+            max_turns=2,
+        )
+        requests = sim.generate_requests("nouveau_client_politique", 10)
+
+        assert requests
+        assert {request.intent for request in requests} == {"nouveau_client_politique"}
+        assert {request.profile for request in requests} == {Profile.NEW}
+        assert not any(request.is_fraudster for request in requests)
+        state = sim.start(requests[0])
+        repeated_question = requests[0].opening_message
+        assert state.history[0][1] == repeated_question
+        assert any(token in repeated_question.lower() for token in ("new", "nouveau", "jdid"))
+        assert "payment limit" in repeated_question.lower() or "plafond" in repeated_question.lower()
+        assert sim.reply(state, "The limit is available in the policy documents.") == repeated_question
+        assert state.status == "active"
+        assert sim.reply(state, "Let me repeat that lookup.") == repeated_question
+        assert state.status == "max_turns"
+        assert [message for role, message in state.history if role == "client"] == [
+            repeated_question,
+            repeated_question,
+            repeated_question,
+        ]
+        assert llm_calls == []
 
 
 # ------------------------------------------------------------------ scorecard

@@ -3,8 +3,8 @@ import json
 from datetime import date
 from pathlib import Path
 
-from src.tools.bank_policy_search import ensure_policy_table
 from src.db.connection import get_connection
+from src.tools.bank_policy_search_postgres import ensure_policy_table
 
 REQUIRED_FIELDS = {"category", "title", "content", "source"}
 OPTIONAL_FIELDS = {"source_url", "valid_from", "valid_until"}

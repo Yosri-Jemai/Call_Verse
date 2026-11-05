@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
 
 type Approval = {
   id: string;
@@ -20,6 +20,9 @@ type Approval = {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -37,20 +40,31 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function actionTitle(action: string): string {
   const titles: Record<string, string> = {
+    block_account: "Block a bank account",
     create_transaction: "Record a transaction",
     update_transaction: "Change a transaction",
     delete_transaction: "Delete a transaction",
+    manual_service_review: "Manual service follow-up",
   };
   return titles[action] || action.replaceAll("_", " ");
 }
 
 function explanation(action: string): string {
   const explanations: Record<string, string> = {
+    block_account: "Blocking a bank account is a high-impact account change. Approval marks the selected account inactive in PostgreSQL; it does not block a card.",
     create_transaction: "The advisor wants to add a transaction record to the active customer's demo account. Review the amount, account, date, and description before deciding.",
     update_transaction: "The advisor wants to change an existing transaction record. Compare the current values with the proposed changes before deciding.",
     delete_transaction: "The advisor wants to remove a transaction record. This may be difficult to reverse; confirm the transaction details before deciding.",
+    manual_service_review: "This prototype cannot execute the requested bank service. Approval authorizes an administrator to follow up manually; it does not block a card, file a dispute, transfer money, change a limit, or update profile details.",
   };
-  return explanations[action] || "The advisor has requested a financial transaction action. Review its details before deciding.";
+  return explanations[action] || "Review the advisor's requested action and details before deciding.";
+}
+
+function approvalDisposition(details: Record<string, unknown>): string | null {
+  const actionDetails = details.details;
+  if (!actionDetails || typeof actionDetails !== "object" || Array.isArray(actionDetails)) return null;
+  const disposition = (actionDetails as Record<string, unknown>).disposition;
+  return disposition === "review_only" ? "review_only" : null;
 }
 
 function humanize(value: string): string {
@@ -67,6 +81,16 @@ function timestamp(value: string | null): string {
   if (!value) return "Just now";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function customerDetails(value: unknown): { name: string; email: string | null } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.name !== "string") return null;
+  return {
+    name: record.name,
+    email: typeof record.email === "string" ? record.email : null,
+  };
 }
 
 export default function AdminApprovalsPage() {
@@ -134,7 +158,19 @@ export default function AdminApprovalsPage() {
               <div className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Admin review</div>
             </div>
           </Link>
-          <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</Link>
+          <div className="flex items-center gap-2">
+            <Link href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to conversation</Link>
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] hover:bg-[#f5f7f3]"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -144,14 +180,14 @@ export default function AdminApprovalsPage() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="text-[32px] font-semibold tracking-[-.055em] sm:text-[38px]">Approval inbox</h1>
-              <p className="mt-2 max-w-xl text-[12px] leading-6 text-[#748078]">Review financial actions the advisor has paused and sent here. Each request includes the advisor’s message and the information needed to make a decision.</p>
+              <p className="mt-2 max-w-xl text-[12px] leading-6 text-[#748078]">Review high-impact actions the advisor has paused and sent here. Each request includes a short reason and the details needed to decide.</p>
             </div>
             <span className="rounded-full border border-[#e4e9e2] bg-white px-3 py-2 text-[10px] font-semibold text-[#647168]">{pendingCount} awaiting review</span>
           </div>
         </div>
 
         <div role="note" className="mb-6 rounded-2xl border border-[#e7e9dc] bg-[#fffdf3] px-4 py-3.5 text-[10px] leading-5 text-[#77704f]">
-          <strong className="font-semibold text-[#615a3e]">Local demo inbox.</strong> This page has no administrator sign-in or role-based access control. Use it only in the local demo environment with test data.
+          <strong className="font-semibold text-[#615a3e]">Approver access.</strong> Only signed-in approver accounts can open this inbox. Keep using synthetic data; backend approval authorization is being rolled out separately.
         </div>
 
         <div className="mb-5 flex items-center justify-between border-b border-[#e4e9e2]">
@@ -178,6 +214,11 @@ export default function AdminApprovalsPage() {
             {approvals.map((approval) => {
               const isPending = approval.status === "pending";
               const isBusy = busyId === approval.id || approval.status === "processing";
+              const customer = customerDetails(approval.details.customer);
+              const isReviewOnly = approvalDisposition(approval.details) === "review_only";
+              const actionDetails = Object.fromEntries(
+                Object.entries(approval.details).filter(([key]) => key !== "customer"),
+              );
               return (
                 <article key={approval.id} className="overflow-hidden rounded-[22px] border border-[#e5e9e3] bg-white shadow-panel">
                   <div className="border-b border-[#edf0eb] bg-[#fbfcfa] px-5 py-4 sm:px-6">
@@ -188,7 +229,11 @@ export default function AdminApprovalsPage() {
                           <span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.11em] ${approval.status === "pending" ? "bg-[#fff4dc] text-[#916411]" : approval.status === "processing" ? "bg-blue-50 text-blue-700" : approval.status === "approved" ? "bg-[#e6f4e9] text-forest" : approval.status === "declined" ? "bg-[#f0f2ee] text-[#707b73]" : "bg-rose-50 text-rose-700"}`}>{approval.status}</span>
                         </div>
                         <h2 className="mt-3 text-[15px] font-semibold tracking-[-.02em]">{approval.message}</h2>
-                        <p className="mt-1 text-[10px] text-[#929c94]">Customer #{approval.customer_id} · Submitted {timestamp(approval.created_at)}</p>
+                        <p className="mt-1 text-[10px] text-[#929c94]">
+                          Customer #{approval.customer_id}
+                          {customer && <> · {customer.name}{customer.email ? ` · ${customer.email}` : ""}</>}
+                          {" · Submitted "}{timestamp(approval.created_at)}
+                        </p>
                       </div>
                       <span className="text-[9px] tabular-nums text-[#a0a9a2]">Request {approval.id.slice(0, 8)}</span>
                     </div>
@@ -197,15 +242,17 @@ export default function AdminApprovalsPage() {
                   <div className="px-5 py-5 sm:px-6">
                     <div className="rounded-xl border border-[#e8eee7] bg-[#f7f9f6] p-4">
                       <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-forest">Why the advisor sent this</p>
-                      <p className="mt-2 text-[11px] leading-5 text-[#637168]">{explanation(approval.action)}</p>
+                      <p className="mt-2 text-[11px] leading-5 text-[#637168]">{isReviewOnly
+                        ? "This request cannot be approved for execution. A decision here only acknowledges or declines specialist review; no operation will be performed."
+                        : explanation(approval.action)}</p>
                       <p className="mt-2 border-t border-[#e7ece5] pt-2 text-[11px] leading-5 text-[#3d4c42]">{approval.message}</p>
                     </div>
 
                     <div className="mt-4">
                       <p className="mb-2 text-[9px] font-semibold uppercase tracking-[.14em] text-[#89938d]">Action details from the advisor</p>
-                      {Object.keys(approval.details).length ? (
+                      {Object.keys(actionDetails).length ? (
                         <dl className="divide-y divide-[#edf0eb] rounded-xl border border-[#e9ede8] px-3">
-                          {Object.entries(approval.details).map(([group, value]) => (
+                          {Object.entries(actionDetails).map(([group, value]) => (
                             <div key={group} className="py-3">
                               <dt className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#748078]">{humanize(group)}</dt>
                               {value && typeof value === "object" && !Array.isArray(value) ? (
@@ -237,10 +284,14 @@ export default function AdminApprovalsPage() {
 
                     {isPending && (
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0eb] pt-4">
-                        <p className="max-w-md text-[9px] leading-4 text-[#929c94]">Approving resumes the advisor’s paused operation. Declining resumes the conversation without allowing that action.</p>
+                        <p className="max-w-md text-[9px] leading-4 text-[#929c94]">{isReviewOnly
+                          ? "This restricted request is recorded for specialist review only; approval cannot authorize the operation."
+                          : approval.action === "manual_service_review"
+                            ? "Approval authorizes manual follow-up only; no bank-service operation is performed by this prototype."
+                            : "Approving resumes the advisor’s paused operation. Declining resumes the conversation without allowing that action."}</p>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => void decide(approval, false)} disabled={Boolean(busyId)} className="rounded-xl border border-[#e2e8e1] bg-white px-4 py-2.5 text-[10px] font-semibold text-[#67746b] transition hover:bg-[#f5f7f3] disabled:opacity-50">Decline</button>
-                          <button type="button" onClick={() => void decide(approval, true)} disabled={Boolean(busyId)} className="rounded-xl bg-forest px-4 py-2.5 text-[10px] font-semibold text-white transition hover:bg-[#0a3f32] disabled:opacity-50">{isBusy ? "Submitting…" : "Approve action"}</button>
+                          <button type="button" onClick={() => void decide(approval, true)} disabled={Boolean(busyId)} className="rounded-xl bg-forest px-4 py-2.5 text-[10px] font-semibold text-white transition hover:bg-[#0a3f32] disabled:opacity-50">{isBusy ? "Submitting…" : isReviewOnly ? "Acknowledge review" : approval.action === "manual_service_review" ? "Authorize follow-up" : "Approve action"}</button>
                         </div>
                       </div>
                     )}
@@ -252,7 +303,7 @@ export default function AdminApprovalsPage() {
           </div>
         )}
 
-        <p className="mt-8 text-center text-[9px] leading-5 text-[#a0a9a2]">Relay local demo · Approval decisions resume a paused advisor conversation. Use test data only.</p>
+        <p className="mt-8 text-center text-[9px] leading-5 text-[#a0a9a2]">Relay local demo · Approval decisions resume the advisor conversation; manual service approvals authorize follow-up only. Use test data only.</p>
       </div>
     </main>
   );

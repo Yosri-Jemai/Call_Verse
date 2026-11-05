@@ -4,9 +4,13 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const CLIENT_API = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://127.0.0.1:8001";
-const ADVISOR_API = process.env.NEXT_PUBLIC_ADVISOR_API_URL || "http://127.0.0.1:8000";
+const ADVISOR_API = "/api/advisor";
+const WFM_API = process.env.NEXT_PUBLIC_WFM_API_URL || "http://127.0.0.1:8002";
 
 type Role = "client" | "conseiller";
+type WfmFlag = { status: "waiting" | "approved" | "denied"; reviewId: string; label: string; requested: string; by?: string | null };
+type WfmCheck = { action: string; replace_with?: string; review: { review_id: string; category_label: string; requested: string; decided_by?: string | null } | null };
+type GateResult = { kind: "pass" } | { kind: "pause"; reviewId: string } | { kind: "deny"; text: string };
 type Message = { role: Role; text: string };
 type AdvisorAuditTrace = {
   tools_called: string[];
@@ -43,7 +47,7 @@ type CallSnapshot = {
   turn: number;
   mood: number;
   sentiment: string;
-  client: { name: string; language: string; intent: string; urgency: string; profile: string };
+  client: { name: string; language: string; intent: string; urgency: string; profile: string; client_id?: string };
   history: Message[];
   summary: Record<string, unknown> | null;
 };
@@ -57,6 +61,7 @@ type AdvisorResponse = {
 type ApprovalRequest = {
   id: string;
   threadId: string;
+  message: string;
 };
 type RunMode = "autopilot" | "manual";
 type SpeechEngine = "advisor" | "client";
@@ -67,6 +72,9 @@ const defaultScenarios: Scenario[] = [
   { name: "panne", description: "A card or banking service outage" },
   { name: "campagne", description: "A seasonal campaign inquiry" },
   { name: "vague_de_fraude", description: "A suspected wave of fraud" },
+  { name: "blocage_compte", description: "A deterministic bank-account block request requiring admin approval" },
+  { name: "enregistrement_depense", description: "A deterministic expense-record request requiring admin approval" },
+  { name: "nouveau_client_politique", description: "A new client asks about a bank policy; Redis cache is verified before the call" },
   { name: "contestation_carte", description: "A disputed card transaction" },
   { name: "vishing_otp", description: "A caller pressured to share an OTP" },
   { name: "virement_sans_verification", description: "A rushed transfer with skipped checks" },
@@ -78,6 +86,9 @@ const scenarioNames: Record<string, string> = {
   panne: "Service outage",
   campagne: "Campaign inquiry",
   vague_de_fraude: "Fraud wave",
+  blocage_compte: "Account block · admin approval",
+  enregistrement_depense: "Record expense · admin approval",
+  nouveau_client_politique: "New client · policy question + Redis test",
   contestation_carte: "Card dispute",
   vishing_otp: "Vishing · OTP",
   virement_sans_verification: "Unverified transfer",
@@ -89,6 +100,7 @@ const scenarioIcons: Record<string, string> = {
   panne: "⌁",
   campagne: "✳",
   vague_de_fraude: "⌑",
+  blocage_compte: "⊘",
   contestation_carte: "▣",
   vishing_otp: "⌁",
   virement_sans_verification: "↗",
@@ -118,6 +130,9 @@ function qualityErrorHint(error: string) {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -185,6 +200,10 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [safetyNote, setSafetyNote] = useState("");
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
+  const [wfmOnline, setWfmOnline] = useState(false);
+  const [wfmPending, setWfmPending] = useState(0);
+  const [wfmFlag, setWfmFlag] = useState<WfmFlag | null>(null);
+  const wfmFlagRef = useRef<WfmFlag | null>(null);
   const transcriptEnd = useRef<HTMLDivElement>(null);
   const stopRequested = useRef(false);
   const autoplayRef = useRef(true);
@@ -197,7 +216,13 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    if (new URLSearchParams(window.location.search).get("denied") === "approver") {
+      setError("Cette page est réservée aux comptes avec le rôle approver.");
+    }
     void Promise.all([
+      requestJson<{ user: { role: "approver" | "viewer" } }>("/api/auth/me")
+        .then(({ user }) => active && setUserRole(user.role))
+        .catch(() => active && window.location.assign("/login")),
       requestJson<{ status: string }>(`${ADVISOR_API}/health`).then(() => active && setAdvisorOnline(true)).catch(() => active && setAdvisorOnline(false)),
       requestJson<{ ok: boolean }>(`${CLIENT_API}/api/health`).then(() => active && setClientOnline(true)).catch(() => active && setClientOnline(false)),
       requestJson<Scenario[]>(`${CLIENT_API}/api/scenarios`).then((items) => active && setScenarios(items)).catch(() => undefined),
@@ -207,6 +232,15 @@ export default function Home() {
       recorder.current?.stop();
       stream.current?.getTracks().forEach((track) => track.stop());
     };
+  }, []);
+
+  useEffect(() => {
+    const poll = () => requestJson<{ ok: boolean; pending_reviews: number }>(`${WFM_API}/api/health`)
+      .then((h) => { setWfmOnline(h.ok); setWfmPending(h.pending_reviews); })
+      .catch(() => setWfmOnline(false));
+    void poll();
+    const timer = window.setInterval(() => void poll(), 6000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -245,7 +279,11 @@ export default function Home() {
         },
       );
       return {
-        approval: { id: queued.id, threadId: queued.thread_id },
+        approval: {
+          id: queued.id,
+          threadId: queued.thread_id,
+          message: response.message?.trim() || "I’ve sent this request for specialist review. It has not been carried out.",
+        },
       };
     }
     if (!response.message?.trim()) throw new Error("The Customer Advisor returned no reply.");
@@ -284,6 +322,92 @@ export default function Home() {
     }
   }
 
+  function wfmPayload(current: CallSnapshot) {
+    return {
+      call_id: current.call_id,
+      client: { name: current.client.name, client_id: current.client.client_id || "", intent: current.client.intent, language: current.client.language },
+      history: current.history,
+    };
+  }
+
+  function showFlag(flag: WfmFlag | null) {
+    wfmFlagRef.current = flag;
+    setWfmFlag(flag);
+  }
+
+  function flagFrom(result: WfmCheck, status: WfmFlag["status"]): WfmFlag | null {
+    if (!result.review) return null;
+    return { status, reviewId: result.review.review_id, label: result.review.category_label, requested: result.review.requested, by: result.review.decided_by };
+  }
+
+  /** Workforce Manager human-approval gate, run on every advisor reply BEFORE the caller hears it.
+   *  A risky request (profile change, money transfer, suspected fraud) pauses the conversation until a
+   *  person approves or denies it on the Workforce Manager page. Offline service = reply passes unchanged. */
+  async function wfmGate(current: CallSnapshot, advisorText: string): Promise<GateResult> {
+    if (!wfmOnline) return { kind: "pass" };
+    try {
+      const result = await requestJson<WfmCheck>(`${WFM_API}/api/live/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...wfmPayload(current), advisor_message: advisorText }),
+      });
+      if ((result.action === "pause" || result.action === "wait") && result.review) {
+        if (result.action === "pause") setWfmPending((count) => count + 1);
+        showFlag(flagFrom(result, "waiting"));
+        return { kind: "pause", reviewId: result.review.review_id };
+      }
+      if (result.action === "denied") {
+        showFlag(flagFrom(result, "denied"));
+        return { kind: "deny", text: result.replace_with || "Your request was refused by our security team." };
+      }
+      if (result.action === "approved") showFlag(flagFrom(result, "approved"));
+      return { kind: "pass" };
+    } catch {
+      return { kind: "pass" };
+    }
+  }
+
+  /** Waits until a person decides on the Workforce Manager page (polls every 2 s). */
+  async function waitForDecision(reviewId: string): Promise<"approved" | "denied" | "stopped"> {
+    while (!stopRequested.current) {
+      try {
+        const review = await requestJson<{ status: string }>(`${WFM_API}/api/reviews/${reviewId}`);
+        if (review.status === "approved" || review.status === "denied") return review.status;
+      } catch {
+        // keep waiting: the service may restart
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    }
+    return "stopped";
+  }
+
+  /** Gate + wait: returns the text to send to the caller, or null when the call must end (denied / stopped). */
+  async function approvedText(current: CallSnapshot, advisorText: string): Promise<{ text: string; end: boolean } | null> {
+    let gate = await wfmGate(current, advisorText);
+    if (gate.kind === "pause") {
+      const decision = await waitForDecision(gate.reviewId);
+      if (decision === "stopped") return null;
+      gate = await wfmGate(current, advisorText);
+    }
+    if (gate.kind === "deny") return { text: gate.text, end: true };
+    return { text: advisorText, end: false };
+  }
+
+  async function flagForReview() {
+    if (!call || wfmFlag) return;
+    try {
+      const result = await requestJson<WfmCheck>(`${WFM_API}/api/live/flag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...wfmPayload(call), reason: "flagged from the live conversation page", by: "operator" }),
+      });
+      showFlag(flagFrom(result, "waiting"));
+      setWfmPending((count) => count + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The call could not be flagged.");
+    }
+  }
+
   async function startConversation(event?: FormEvent) {
     event?.preventDefault();
     if (!canStart) return;
@@ -291,6 +415,7 @@ export default function Home() {
     setNotice("");
     setSafetyNote("");
     setApprovalRequest(null);
+    showFlag(null);
     setThreadId(null);
     setCall(null);
     setQualityReport(null);
@@ -307,17 +432,28 @@ export default function Home() {
         language,
         difficulty,
         llm: clientEngine,
-        max_turns: 8,
+        max_turns: scenario === "nouveau_client_politique" ? 2 : 8,
         ...(seed.trim() ? { seed: Number(seed) } : {}),
       };
       if (seed.trim() && !Number.isInteger(Number(seed))) throw new Error("Seed must be a whole number.");
+      let cacheNotice = "";
+      if (scenario === "nouveau_client_politique") {
+        const cacheTest = await requestJson<{ cached: boolean; cache_hit_verified: boolean }>(
+          `${ADVISOR_API}/api/dev/redis-cache-test`,
+          { method: "POST" },
+        );
+        if (!cacheTest.cached || !cacheTest.cache_hit_verified) {
+          throw new Error("Redis did not confirm a cached policy lookup. Check that Redis and the policy index are available.");
+        }
+        cacheNotice = "Redis policy result cached; repeat lookup verified.";
+      }
       const started = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       setCall(started);
-      setNotice(`Session ${started.call_id} · ${started.client.name} joined`);
+      setNotice([`Session ${started.call_id} · ${started.client.name} joined`, cacheNotice].filter(Boolean).join(" · "));
       const opening = [...started.history].reverse().find((message) => message.role === "client");
       if (autoplayRef.current && opening) await playIfEnabled(opening, started.client);
       if (mode === "autopilot") {
@@ -385,10 +521,36 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: advisorText }),
     });
-    setCall(updated);
-    const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
-    if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
-    return updated;
+    const history = [...updated.history];
+    const pendingNotInSimulator = pendingMessages.filter(
+      (pending) => !history.some((message) => message.role === pending.role && message.text === pending.text),
+    );
+    if (pendingNotInSimulator.length) {
+      let advisorReplyIndex = -1;
+      for (let index = history.length - 1; index >= 0; index -= 1) {
+        if (history[index].role === advisorMessage.role && history[index].text === advisorText) {
+          advisorReplyIndex = index;
+          break;
+        }
+      }
+      history.splice(advisorReplyIndex < 0 ? history.length : advisorReplyIndex, 0, ...pendingNotInSimulator);
+    }
+    const withPendingMessages = { ...updated, history };
+    setCall(withPendingMessages);
+    const clientReply = [...withPendingMessages.history].reverse().find((message) => message.role === "client");
+    if (clientReply && withPendingMessages.status === "active") await playIfEnabled(clientReply, withPendingMessages.client);
+    return withPendingMessages;
+  }
+
+  async function showPendingAdvisorMessage(current: CallSnapshot, text: string): Promise<CallSnapshot> {
+    const paused = {
+      ...current,
+      history: [...current.history, { role: "conseiller" as const, text }],
+    };
+    callRef.current = paused;
+    setCall(paused);
+    await playIfEnabled({ role: "conseiller", text }, current.client);
+    return paused;
   }
 
   async function runAutopilot(initialCall: CallSnapshot, initialThread: string | null) {
@@ -396,18 +558,42 @@ export default function Home() {
     let currentThread = initialThread;
     for (let turn = 0; turn < 8 && current.status === "active"; turn += 1) {
       if (stopRequested.current) break;
+      if (wfmFlagRef.current?.status === "waiting") {           // flagged by hand: wait for the human decision
+        const decision = await waitForDecision(wfmFlagRef.current.reviewId);
+        if (decision === "stopped") break;
+        if (decision === "denied") {
+          const refusal = await approvedText(current, "");
+          if (refusal) current = await advanceSimulation(current, refusal.text);
+          if (current.status === "active") {
+            current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
+            setCall(current);
+          }
+          break;
+        }
+        showFlag({ ...wfmFlagRef.current, status: "approved" });
+      }
       const latestClient = [...current.history].reverse().find((message) => message.role === "client");
       if (!latestClient) throw new Error("The simulator did not provide a customer message.");
       const advisor = await sendToAdvisor(latestClient.text, currentThread);
       if ("approval" in advisor) {
+        await showPendingAdvisorMessage(current, advisor.approval.message);
         setThreadId(advisor.approval.threadId);
         setApprovalRequest(advisor.approval);
-        setSafetyNote("The advisor sent this financial action to the admin approval inbox. The conversation is paused.");
+        setSafetyNote("The request is saved in the specialist review inbox. The conversation is paused until it is reviewed.");
         return;
       }
       currentThread = advisor.thread;
       setThreadId(currentThread);
-      current = await advanceSimulation(current, advisor.answer, advisor.auditTrace);
+      const gated = await approvedText(current, advisor.answer);
+      if (!gated) break;
+      current = await advanceSimulation(current, gated.text);
+      if (gated.end) {
+        if (current.status === "active") {
+          current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
+          setCall(current);
+        }
+        break;
+      }
     }
     if (stopRequested.current && current.status === "active") {
       current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
@@ -419,10 +605,13 @@ export default function Home() {
   async function submitManualReply(event: FormEvent) {
     event.preventDefault();
     if (!call || call.status !== "active" || !composer.trim() || busy) return;
-    const text = composer.trim();
+    const typed = composer.trim();
     setComposer("");
     setError("");
     setBusy(true);
+    const gated = await approvedText(call, typed);
+    if (!gated) { setBusy(false); setComposer(typed); return; }
+    const text = gated.text;
     try {
       const updated = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${call.call_id}/reply`, {
         method: "POST",
@@ -431,11 +620,15 @@ export default function Home() {
       });
       setCall(updated);
       await playIfEnabled({ role: "conseiller", text }, call.client);
+      if (gated.end && updated.status === "active") {        // a person denied the request: the call ends
+        setCall(await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${call.call_id}/end`, { method: "POST" }));
+        return;
+      }
       const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
       if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
       if (updated.status !== "active") await analyzeQuality(updated);
     } catch (reason) {
-      setComposer(text);
+      setComposer(typed);
       setError(reason instanceof Error ? reason.message : "Your reply could not be sent.");
     } finally {
       setBusy(false);
@@ -495,10 +688,12 @@ export default function Home() {
         setBusy(true);
         setAutopilot(true);
         try {
+          const lastPausedMessage = pausedCall.history[pausedCall.history.length - 1];
+          const pendingMessages = lastPausedMessage?.role === "conseiller" ? [lastPausedMessage] : [];
           const updated = await advanceSimulation(
             pausedCall,
             request.result.message.trim(),
-            request.result.audit_trace,
+            pendingMessages,
           );
           await runAutopilot(updated, request.result.thread_id || approvalRequest.threadId);
         } catch (reason) {
@@ -596,6 +791,21 @@ export default function Home() {
             <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
               Admin inbox{approvalRequest ? " · 1" : ""}
             </Link>
+            {userRole === "approver" && (
+              <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+                Admin inbox{approvalRequest ? " · 1" : ""}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+              className="rounded-xl px-2 py-2 text-[10px] font-semibold text-[#718076] transition hover:bg-white hover:text-forest"
+            >
+              Sign out
+            </button>
             <div className="hidden items-center gap-2 rounded-full border border-[#e6ebe5] bg-white px-3 py-2 text-xs font-medium text-[#68756d] sm:flex">
               <span className="relative flex h-2 w-2">
                 <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${advisorOnline && clientOnline ? "animate-ping bg-emerald-500" : "bg-rose-400"}`} />
@@ -792,6 +1002,26 @@ export default function Home() {
               </div>
               <Link href="/admin/approvals" className="rounded-xl bg-forest px-4 py-2.5 text-[10px] font-semibold text-white transition hover:bg-[#0a3f32]">Open admin inbox</Link>
             </section>
+          )}
+          {wfmFlag && (
+            <section aria-label="Human approval" className={`mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 sm:mx-7 ${wfmFlag.status === "waiting" ? "border-amber-300 bg-amber-50" : wfmFlag.status === "approved" ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+              <div>
+                <p className="text-[12px] font-semibold text-ink">
+                  {wfmFlag.status === "waiting" ? "Conversation paused: waiting for a human decision" : wfmFlag.status === "approved" ? `Approved${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the conversation continues` : `Refused${wfmFlag.by ? ` by ${wfmFlag.by}` : ""}: the customer was told no and the call ended`}
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-[#5f6d64]">
+                  {wfmFlag.label}: {call?.client.name || "the customer"} wants to {wfmFlag.requested}.{wfmFlag.status === "waiting" ? " Nothing is done until a person approves it." : ""}
+                </p>
+              </div>
+              {wfmFlag.status === "waiting" && (
+                <a href="/workforce?tab=approvals" target="_blank" rel="noreferrer" className="rounded-xl bg-forest px-4 py-2.5 text-[11px] font-semibold text-white transition hover:bg-[#0a3f32]">Open Approvals ↗</a>
+              )}
+            </section>
+          )}
+          {call && wfmOnline && !wfmFlag && (
+            <div className="mx-5 mt-3 flex justify-end sm:mx-7">
+              <button type="button" onClick={() => void flagForReview()} className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-50">Flag this call as suspected fraud</button>
+            </div>
           )}
 
           <div className="transcript-scroll flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">

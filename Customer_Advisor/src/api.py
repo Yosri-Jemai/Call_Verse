@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.agent.graph import create_agent
 from src.agent.policy_rag import get_embeddings
+from src.auth.router import router as auth_router
 from src.config import settings
 from src.db.connection import get_connection
 from src.stt.transcriber import transcribe_audio_file
@@ -30,7 +31,13 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 SERVICE_BUSY_DETAIL = "Le service est temporairement saturé, réessayez plus tard."
 LLM_UNAVAILABLE_DETAIL = "Le service de génération est indisponible."
 INTERNAL_ERROR_DETAIL = "Erreur interne."
-APPROVAL_ACTIONS = {"create_transaction", "update_transaction", "delete_transaction"}
+APPROVAL_ACTIONS = {
+    "block_account",
+    "create_transaction",
+    "update_transaction",
+    "delete_transaction",
+    "manual_service_review",
+}
 
 
 class ChatRequest(BaseModel):
@@ -109,9 +116,7 @@ def ensure_approval_table() -> None:
                     id UUID PRIMARY KEY,
                     thread_id UUID NOT NULL,
                     customer_id INTEGER NOT NULL CHECK (customer_id > 0),
-                    action TEXT NOT NULL CHECK (
-                        action IN ('create_transaction', 'update_transaction', 'delete_transaction')
-                    ),
+                    action TEXT NOT NULL,
                     message TEXT NOT NULL,
                     details JSONB NOT NULL DEFAULT '{}'::jsonb,
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (
@@ -121,6 +126,25 @@ def ensure_approval_table() -> None:
                     reviewed_at TIMESTAMPTZ,
                     result JSONB
                 )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE admin_approval_requests
+                DROP CONSTRAINT IF EXISTS admin_approval_requests_action_check
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE admin_approval_requests
+                ADD CONSTRAINT admin_approval_requests_action_check
+                CHECK (action IN (
+                    'block_account',
+                    'create_transaction',
+                    'update_transaction',
+                    'delete_transaction',
+                    'manual_service_review'
+                ))
                 """
             )
             cur.execute(
@@ -136,7 +160,8 @@ app = FastAPI(
     title="Cashy Agent API",
     description=(
         "Local development API for the Cashy banking-support agent. "
-        "This prototype has no caller authentication or customer-level authorization."
+        "Administrator authentication is available; authorization is still being "
+        "applied incrementally to the remaining application routes."
     ),
     lifespan=lifespan,
 )
@@ -148,8 +173,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+app.include_router(auth_router)
 app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
 
 
@@ -288,6 +314,41 @@ def extract_audit_trace(messages: list[Any]) -> dict[str, Any]:
 @app.get("/health")
 def health():
     return {"status": "ok", "mode": settings.app_mode}
+
+
+@app.post("/api/dev/redis-cache-test")
+def verify_redis_policy_cache() -> dict[str, Any]:
+    from src.cache.redis_cache import get_policy_search_cache
+    from src.tools.bank_policy_search import _search_policy, build_policy_cache_key
+
+    query = "Quel est le plafond du paiement sans contact par transaction ?"
+    category = "limits"
+    cache = get_policy_search_cache()
+    cache_key = build_policy_cache_key(query, category)
+    cached_before = cache.get(cache_key)
+
+    result = _search_policy(query, category)
+    if not result.get("found"):
+        raise HTTPException(
+            status_code=503,
+            detail="No matching policy was found. Check that the policy collection is ingested.",
+        )
+
+    cached_result = cache.get(cache_key)
+    if cached_result is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Redis is unavailable or caching is disabled; the policy result was not cached.",
+        )
+
+    repeated_result = _search_policy(query, category)
+    return {
+        "cached": True,
+        "cache_hit_verified": repeated_result == cached_result,
+        "already_cached": cached_before is not None,
+        "query": query,
+        "policy_found": bool(cached_result.get("found")),
+    }
 
 
 @app.post("/api/transcribe", response_model=TranscriptionResponse)
@@ -501,10 +562,10 @@ def create_admin_approval(payload: ApprovalCreateRequest) -> dict[str, Any]:
     if action not in APPROVAL_ACTIONS:
         raise HTTPException(
             status_code=422,
-            detail="Only financial transaction actions can be sent for approval.",
+            detail="This action is not supported by the approval inbox.",
         )
 
-    message = payload.confirmation.get("message")
+    message = payload.confirmation.get("admin_message", payload.confirmation.get("message"))
     if not isinstance(message, str) or not message.strip():
         raise HTTPException(status_code=422, detail="The advisor's approval explanation is required.")
     details = {
@@ -516,6 +577,18 @@ def create_admin_approval(payload: ApprovalCreateRequest) -> dict[str, Any]:
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, email FROM customers WHERE id = %s",
+                    (payload.customer_id,),
+                )
+                customer = cur.fetchone()
+                if customer is None:
+                    raise HTTPException(status_code=404, detail="The approval customer was not found.")
+                details["customer"] = {
+                    "id": customer[0],
+                    "name": customer[1],
+                    "email": customer[2],
+                }
                 cur.execute(
                     f"""
                     INSERT INTO admin_approval_requests
@@ -536,6 +609,8 @@ def create_admin_approval(payload: ApprovalCreateRequest) -> dict[str, Any]:
                     ),
                 )
                 row = cur.fetchone()
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Could not send advisor action to the admin inbox")
         raise HTTPException(status_code=503, detail="Could not send the action to the approval inbox.") from exc

@@ -19,6 +19,26 @@ def test_same_seed_same_requests():
     assert [r.request_id for r in a] == [r.request_id for r in b]
 
 
+def test_turn_log_records_identity_state_before_and_after_each_reply():
+    sim = ClientSimulatorAgent(seed=7, llm=None, client_swears=False)
+    req = sim.generate_requests("normal", 10)[0]
+    state = sim.start(req)
+
+    sim.reply(
+        state,
+        "Pour vérifier votre identité, pouvez-vous confirmer votre date de naissance et votre numéro de téléphone ?",
+    )
+    first_turn = state.turn_log[0]
+    assert first_turn["identity_verified_before"] is False
+    assert first_turn["verification_asked_before"] is False
+    assert isinstance(first_turn["identity_verified_after"], bool)
+
+    sim.reply(state, "Merci, votre carte est bloquée.")
+    second_turn = state.turn_log[1]
+    assert second_turn["identity_verified_before"] is state.identity_verified
+    assert second_turn["verification_asked_before"] is True
+
+
 def test_peak_scenarios_have_more_calls():
     n = lambda s: len(ClientSimulatorAgent(seed=2).generate_requests(s, 20))
     assert n("panne") > n("normal")

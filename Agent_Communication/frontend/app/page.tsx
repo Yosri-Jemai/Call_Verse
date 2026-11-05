@@ -12,6 +12,34 @@ type WfmFlag = { status: "waiting" | "approved" | "denied"; reviewId: string; la
 type WfmCheck = { action: string; replace_with?: string; review: { review_id: string; category_label: string; requested: string; decided_by?: string | null } | null };
 type GateResult = { kind: "pass" } | { kind: "pause"; reviewId: string } | { kind: "deny"; text: string };
 type Message = { role: Role; text: string };
+type AdvisorAuditTrace = {
+  tools_called: string[];
+  tool_outputs: { tool: string; result: unknown }[];
+  policy_sources: { source?: string; title?: string; category?: string; source_url?: string; text?: string }[];
+  tool_calls?: { id: string; name: string; arguments: unknown; result: unknown }[];
+};
+type CallAuditTrace = AdvisorAuditTrace & { turn: number };
+type QualityReport = {
+  call_id: string;
+  database_id: number;
+  score_global: number | null;
+  overall_score_0_to_100: number | null;
+  rule_evaluation: {
+    score_0_to_5: number | null;
+    findings: { id: string; severity: string; turns: number[]; explanation: string }[];
+    recommendations: string[];
+    evidence_scope: string;
+  };
+  llm_judgment: {
+    status: string;
+    model?: string;
+    summary?: string;
+    criteria?: Record<string, { score: number; explanation: string; evidence_turns: number[] }>;
+    recommendations?: string[];
+  };
+  advisor_trace: CallAuditTrace[];
+  recommendations: string[];
+};
 type Scenario = { name: string; description: string };
 type CallSnapshot = {
   call_id: string;
@@ -27,7 +55,8 @@ type AdvisorResponse = {
   thread_id: string;
   message?: string | null;
   pending_approval: boolean;
-  confirmation?: { message?: string; admin_message?: string; details?: Record<string, unknown> } | null;
+  confirmation?: { message?: string; details?: Record<string, unknown> } | null;
+  audit_trace?: AdvisorAuditTrace;
 };
 type ApprovalRequest = {
   id: string;
@@ -76,6 +105,28 @@ const scenarioIcons: Record<string, string> = {
   vishing_otp: "⌁",
   virement_sans_verification: "↗",
 };
+
+function qualityErrorHint(error: string) {
+  if (/HTTP 413|trop longue|prompt budget|too large|too many tokens/i.test(error)) {
+    return "The conversation and audit evidence exceed Groq's token-per-minute request limit. Quality Analyst tried a compact prompt; reduce the audit payload or use a model with a higher TPM limit.";
+  }
+  if (/HTTP 429|quota|rate limit|rate_limit/i.test(error)) {
+    return "Groq's request or token quota is exhausted for the configured QA models. Wait for quota reset or configure a model with available quota.";
+  }
+  if (/Cloudflare error 1010/i.test(error)) {
+    return "This is a Cloudflare access/security block, not a missing-key error. Check your VPN, proxy, firewall, or network. If it persists, contact Groq support with the request time and ID; never share your API key.";
+  }
+  if (/HTTP 401|API key is missing|rejected the API key/i.test(error)) {
+    return "Check that the Groq API key in Client_Simulator/.env is present, active, and has not expired.";
+  }
+  if (/cannot reach groq|timeout|network|connection/i.test(error)) {
+    return "Quality Analyst could not connect to Groq. Check network access, proxy, or firewall, then retry.";
+  }
+  if (/model.*(not found|does not exist|not provide)|model_not_found/i.test(error)) {
+    return "The configured QA model is unavailable to this Groq account. Set QUALITY_ANALYST_MODEL to a model enabled for the account.";
+  }
+  return "Quality Analyst reported the specific Groq/API error above. Correct that cause before retrying.";
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -142,7 +193,9 @@ export default function Home() {
   const [autoplay, setAutoplay] = useState(true);
   const [advisorOnline, setAdvisorOnline] = useState(false);
   const [clientOnline, setClientOnline] = useState(false);
-  const [userRole, setUserRole] = useState<"approver" | "viewer" | null>(null);
+  const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [qualityError, setQualityError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [safetyNote, setSafetyNote] = useState("");
@@ -156,6 +209,8 @@ export default function Home() {
   const autoplayRef = useRef(true);
   const approvalPollRef = useRef(false);
   const callRef = useRef<CallSnapshot | null>(null);
+  const advisorTraceRef = useRef<CallAuditTrace[]>([]);
+  const qualityAttemptedCallRef = useRef<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
 
@@ -202,7 +257,7 @@ export default function Home() {
   async function sendToAdvisor(
     message: string,
     activeThread: string | null,
-  ): Promise<{ answer: string; thread: string } | { approval: ApprovalRequest }> {
+  ): Promise<{ answer: string; thread: string; auditTrace: AdvisorAuditTrace } | { approval: ApprovalRequest }> {
     const response = await requestJson<AdvisorResponse>(`${ADVISOR_API}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -233,7 +288,38 @@ export default function Home() {
     }
     if (!response.message?.trim()) throw new Error("The Customer Advisor returned no reply.");
     if (!currentThread) throw new Error("The Customer Advisor returned no conversation ID.");
-    return { answer: response.message.trim(), thread: currentThread };
+    return {
+      answer: response.message.trim(),
+      thread: currentThread,
+      auditTrace: response.audit_trace || { tools_called: [], tool_outputs: [], policy_sources: [] },
+    };
+  }
+
+  async function analyzeQuality(snapshot: CallSnapshot, retry = false, rulesOnly = false) {
+    if (snapshot.status === "active") return;
+    if (!retry && qualityAttemptedCallRef.current === snapshot.call_id) return;
+    qualityAttemptedCallRef.current = snapshot.call_id;
+    setQualityLoading(true);
+    setQualityError("");
+    try {
+      const report = await requestJson<QualityReport>(
+        `${CLIENT_API}/api/calls/${snapshot.call_id}/quality-analysis`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            advisor_trace: advisorTraceRef.current,
+            thread_id: threadId || undefined,
+            rules_only: rulesOnly,
+          }),
+        },
+      );
+      setQualityReport(report);
+    } catch (reason) {
+      setQualityError(reason instanceof Error ? reason.message : "Quality Analyst could not evaluate this call.");
+    } finally {
+      setQualityLoading(false);
+    }
   }
 
   function wfmPayload(current: CallSnapshot) {
@@ -332,6 +418,10 @@ export default function Home() {
     showFlag(null);
     setThreadId(null);
     setCall(null);
+    setQualityReport(null);
+    setQualityError("");
+    advisorTraceRef.current = [];
+    qualityAttemptedCallRef.current = null;
     setComposer("");
     setBusy(true);
     stopRequested.current = false;
@@ -415,8 +505,14 @@ export default function Home() {
   async function advanceSimulation(
     current: CallSnapshot,
     advisorText: string,
-    pendingMessages: Message[] = [],
+    auditTrace?: AdvisorAuditTrace,
   ): Promise<CallSnapshot> {
+    if (auditTrace) {
+      advisorTraceRef.current = [
+        ...advisorTraceRef.current,
+        { turn: current.history.filter((message) => message.role === "conseiller").length + 1, ...auditTrace },
+      ];
+    }
     const advisorMessage: Message = { role: "conseiller", text: advisorText };
     setCall((previous) => previous ? { ...previous, history: [...previous.history, advisorMessage] } : previous);
     await playIfEnabled(advisorMessage, current.client);
@@ -503,6 +599,7 @@ export default function Home() {
       current = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${current.call_id}/end`, { method: "POST" });
       setCall(current);
     }
+    if (current.status !== "active") await analyzeQuality(current);
   }
 
   async function submitManualReply(event: FormEvent) {
@@ -529,6 +626,7 @@ export default function Home() {
       }
       const clientReply = [...updated.history].reverse().find((message) => message.role === "client");
       if (clientReply && updated.status === "active") await playIfEnabled(clientReply, updated.client);
+      if (updated.status !== "active") await analyzeQuality(updated);
     } catch (reason) {
       setComposer(typed);
       setError(reason instanceof Error ? reason.message : "Your reply could not be sent.");
@@ -544,6 +642,7 @@ export default function Home() {
       try {
         const ended = await requestJson<CallSnapshot>(`${CLIENT_API}/api/calls/${call.call_id}/end`, { method: "POST" });
         setCall(ended);
+        await analyzeQuality(ended);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "The call could not be ended.");
       } finally {
@@ -567,7 +666,7 @@ export default function Home() {
       try {
         const request = await requestJson<{
           status: string;
-          result?: { message?: string | null; thread_id?: string; pending_approval?: boolean } | null;
+          result?: { message?: string | null; thread_id?: string; pending_approval?: boolean; audit_trace?: AdvisorAuditTrace } | null;
         }>(`${ADVISOR_API}/api/admin/approvals/${approvalRequest.id}`);
         if (!active || request.status === "pending" || request.status === "processing") return;
         if (request.status === "failed") {
@@ -686,8 +785,11 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/workforce" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-              Workforce Manager{wfmPending ? ` · ${wfmPending} to review` : ""}
+            <Link href="/quality" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+              Quality Analyst
+            </Link>
+            <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+              Admin inbox{approvalRequest ? " · 1" : ""}
             </Link>
             {userRole === "approver" && (
               <Link href="/admin/approvals" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
@@ -946,7 +1048,56 @@ export default function Home() {
                   );
                 })}
                 {(busy || autopilot) && <div className="flex items-center gap-2.5"><div className="grid h-8 w-8 place-items-center rounded-xl bg-[#eaf2e9] text-forest"><span className="h-3 w-3 animate-pulse rounded-full bg-current" /></div><div className="rounded-2xl rounded-bl-md bg-[#f7f9f6] px-4 py-3 text-[11px] text-[#8d9990]">{autopilot ? "The agents are talking…" : "Connecting the customer…"}</div></div>}
-                {completed && call?.summary && <div className="rounded-2xl border border-[#e7ebe5] bg-[#f8faf7] p-4"><div className="flex items-center gap-2 text-xs font-semibold text-forest"><Icon name="check" size={15} /> Session complete</div><p className="mt-2 text-[11px] leading-5 text-[#7b877e]">Conversation status: {call.status.replaceAll("_", " ")}. Start a new conversation to try another scenario.</p></div>}
+                {completed && call?.summary && (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-[#e7ebe5] bg-[#f8faf7] p-4">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-forest"><Icon name="check" size={15} /> Session complete</div>
+                      <p className="mt-2 text-[11px] leading-5 text-[#7b877e]">Conversation status: {call.status.replaceAll("_", " ")}. Quality Analyst is preparing the post-call review.</p>
+                    </div>
+                    {qualityLoading && (
+                      <div role="status" className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[11px] text-emerald-900">
+                        Quality Analyst is reviewing the transcript, control signals, and Cashy tool evidence…
+                      </div>
+                    )}
+                    {qualityError && (
+                      <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-[11px] leading-5 text-rose-900">
+                        <p className="font-semibold">Quality Analyst could not finish the review.</p>
+                        <p className="mt-1">{qualityError}</p>
+                        <p className="mt-1">{qualityErrorHint(qualityError)}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void analyzeQuality(call, true)}
+                            disabled={qualityLoading}
+                            className="rounded-lg border border-rose-200 bg-white px-3 py-2 font-semibold hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            Retry Groq analysis
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void analyzeQuality(call, true, true)}
+                            disabled={qualityLoading}
+                            className="rounded-lg border border-rose-200 bg-white px-3 py-2 font-semibold hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            Run rules-only partial review
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {qualityReport && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dce9dc] bg-white p-4 text-[11px]">
+                        <p className="text-[#56645b]">
+                          {qualityReport.llm_judgment.status === "skipped"
+                            ? `Partial rules-only review · no global score · report #${qualityReport.database_id}`
+                            : `Review complete · score ${qualityReport.overall_score_0_to_100 ?? "—"}/100 · report #${qualityReport.database_id}`}
+                        </p>
+                        <Link href="/quality" className="rounded-lg bg-forest px-3 py-2 font-semibold text-white hover:bg-[#0a3f32]">
+                          Open Quality Analyst
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div ref={transcriptEnd} />
               </div>
             ) : (

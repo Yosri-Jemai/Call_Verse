@@ -264,6 +264,28 @@ class Store:
         return self._run("SELECT idx, role, text FROM turns WHERE run_id = ? AND call_id = ? ORDER BY idx",
                          (run_id, call_id), fetch=True)
 
+    def live_call_transcript(self, call_id: str) -> Optional[dict]:
+        """Return persisted conversation turns and metadata for a live call."""
+        rows = self._run(
+            """
+            SELECT c.run_id, c.call_id, c.profile, c.intent, c.language, c.status,
+                   c.waited_s, c.resolved, c.escalated, c.identity_verified,
+                   c.verification_asked, c.is_fraudster, r.kind
+            FROM calls c
+            JOIN runs r ON r.run_id = c.run_id
+            WHERE c.call_id = ? AND r.kind = 'live'
+            ORDER BY r.created_at DESC
+            LIMIT 1
+            """,
+            (call_id,),
+            fetch=True,
+        )
+        if not rows:
+            return None
+        call = rows[0]
+        call["transcript"] = self.transcript(call["run_id"], call_id)
+        return call
+
     def list_clients(self, limit: int = 20) -> list[dict]:
         return self._run("SELECT * FROM crm_clients LIMIT ?", (limit,), fetch=True)
 

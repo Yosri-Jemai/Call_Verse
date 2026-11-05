@@ -116,6 +116,32 @@ can be marked review-only: they cannot be approved for execution.
 The admin page is a local-demo page and does not have sign-in or role-based
 access control. Do not expose it or the APIs on a public network.
 
+After each dashboard call ends, Relay automatically asks the Client Simulator
+API to run Quality Analyst. The report history and details are available on the
+dedicated `/quality` page. Quality Analyst uses Groq via API, configured with
+`GROQ_API_KEY` in `Client_Simulator/.env`; no local Mistral model is required.
+It scores accuracy, compliance, resolution, empathy, and relevance on a weighted
+0–10 scale. The score is computed in code and capped at 5/10 for a critical
+error. Numeric claims with explicit units are compared against source/tool
+evidence attached to the same advisor turn; without any evidence in the call,
+the check emits a warning rather than inventing an error. This does not verify
+every factual claim. Manual replies have no Cashy tool trace.
+
+Recommendations are human coaching suggestions for the team and are not
+automatically applied to Cashy. Reports and available call evidence are stored
+in the dedicated PostgreSQL database configured by `QA_DATABASE_URL` in
+`Client_Simulator/.env`. The five QA tables are created automatically. If that
+variable is omitted, Quality Analyst falls back to
+`Quality_Analyst/data/quality_reports.sqlite3` (SQLite). This setting is
+independent of the Client Simulator's `DATABASE_URL` and Cashy's database.
+Conversations and evidence are saved before the Groq call, so a failed review
+can be retried without losing the transcript. The database includes the
+`qa_conversations`, `qa_tours`, `qa_sources`, `qa_evaluations`, and `qa_liens`
+tables. The integration uses the simulator's persisted transcript when
+available, but does not read LangGraph's PostgreSQL checkpointer directly. See
+[`Quality_Analyst/README.md`](../Quality_Analyst/README.md) for configuration
+and limitations.
+
 ## Voice
 
 The dashboard uses the speech endpoints already supplied by each project:
@@ -144,3 +170,9 @@ The original terminal pipeline remains available:
 
 Run `.\Client_Simulator\.venv\Scripts\python.exe .\Agent_Communication\run_simulation.py --help`
 for all command-line options.
+
+To run a post-call Quality Analyst evaluation, configure `GROQ_API_KEY` in the
+process environment and pass `--quality-analysis`. The report is saved to a
+local SQLite database; optional flags `--quality-report` and `--quality-db`
+select the JSON report and database paths. See
+[`Quality_Analyst/README.md`](../Quality_Analyst/README.md) for setup and limits.

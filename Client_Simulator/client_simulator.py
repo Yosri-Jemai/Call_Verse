@@ -713,7 +713,9 @@ class ClientSimulatorAgent:
         f = self.judge.analyse(advisor_msg, last_client)
         # per-turn record read by scorecard.py (flags are copied: they are plain booleans / lists)
         st.turn_log.append(dict(turn=st.turn, advisor=advisor_msg, flags=dict(f), mood_before=round(st.mood, 3),
-                                sentiment_before=st.sentiment))
+                                sentiment_before=st.sentiment,
+                                identity_verified_before=st.identity_verified,
+                                verification_asked_before=st.verification_asked))
         return f
 
     # ---- phase 2: update (mood, fraud pressure, end of call) --------------------
@@ -787,6 +789,7 @@ class ClientSimulatorAgent:
         if st.turn_log:
             st.turn_log[-1]["mood_after"] = round(st.mood, 3)
             st.turn_log[-1]["client"] = text
+            st.turn_log[-1]["identity_verified_after"] = st.identity_verified
         if swear:
             r = scan_profanity(text)
             if r["found"]:                          # counted only if the client really swore
@@ -1173,7 +1176,7 @@ class ClientSimulatorAgent:
 
     # ---- outputs for the other agents / KPIs -------------------------------
     @staticmethod
-    def summary(st: ConversationState) -> dict:
+    def summary(st: ConversationState, include_qa: bool = True) -> dict:
         r = st.request
         return dict(request_id=r.request_id, client_id=r.client_id, profile=r.profile.value, intent=r.intent,
                     language=r.language, incident=r.incident,
@@ -1191,7 +1194,7 @@ class ClientSimulatorAgent:
                     client_swears=st.client_swears,
                     final_emotion=st.emotion, final_mood=round(st.mood, 3), final_sentiment=st.sentiment,
                     mood_trace=list(st.mood_trace), engine=dict(st.engine), llm_error=st.llm_error,
-                    repeats=st.repeats, **_qa_summary(st))
+                    repeats=st.repeats, **(_qa_summary(st) if include_qa else {}))
 
 
 def _qa_summary(st: "ConversationState") -> dict:

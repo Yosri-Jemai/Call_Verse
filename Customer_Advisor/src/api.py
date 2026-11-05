@@ -60,6 +60,7 @@ class ChatResponse(BaseModel):
     message: str | None = None
     pending_approval: bool = False
     confirmation: dict[str, Any] | None = None
+    audit_trace: dict[str, Any] = Field(default_factory=dict)
 
 
 class ApprovalCreateRequest(BaseModel):
@@ -202,6 +203,7 @@ def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
             message=confirmation.get("message", "Please review and confirm this action."),
             pending_approval=True,
             confirmation=confirmation,
+            audit_trace=extract_audit_trace(result.get("messages", ())),
         )
 
     messages = result.get("messages", ())
@@ -222,7 +224,91 @@ def format_result(thread_id: UUID, result: dict[str, Any]) -> ChatResponse:
         response_text = content["text"]
     else:
         response_text = json.dumps(content, default=str)
-    return ChatResponse(thread_id=thread_id, message=response_text)
+    return ChatResponse(
+        thread_id=thread_id,
+        message=response_text,
+        audit_trace=extract_audit_trace(messages),
+    )
+
+
+def extract_audit_trace(messages: list[Any]) -> dict[str, Any]:
+    """Expose bounded tool evidence for post-call QA, not as instructions to the advisor."""
+    last_user_index = max(
+        (index for index, message in enumerate(messages) if getattr(message, "type", None) == "human"),
+        default=-1,
+    )
+    tools: list[str] = []
+    tool_outputs: list[dict[str, Any]] = []
+    policy_sources: list[dict[str, Any]] = []
+    tool_calls: list[dict[str, Any]] = []
+    calls_by_id: dict[str, dict[str, Any]] = {}
+
+    for message in messages[last_user_index + 1:]:
+        for tool_call in getattr(message, "tool_calls", []) or []:
+            name = tool_call.get("name")
+            if isinstance(name, str) and name not in tools:
+                tools.append(name)
+            call_id = tool_call.get("id")
+            if isinstance(call_id, str):
+                captured = {
+                    "id": call_id,
+                    "name": name or "unknown_tool",
+                    "arguments": tool_call.get("args", {}),
+                    "result": None,
+                }
+                tool_calls.append(captured)
+                calls_by_id[call_id] = captured
+
+        if getattr(message, "type", None) != "tool":
+            continue
+        name = getattr(message, "name", None) or "unknown_tool"
+        if name not in tools:
+            tools.append(name)
+        content = getattr(message, "content", "")
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False, default=str)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            parsed = None
+
+        if name in {"search_bank_policies", "search_bank_policies_postgres"} and isinstance(parsed, dict):
+            source_summaries = []
+            for document in parsed.get("documents", []):
+                if not isinstance(document, dict):
+                    continue
+                source = {
+                    key: document.get(key)
+                    for key in ("source", "title", "category", "source_url", "similarity_score")
+                    if document.get(key) is not None
+                }
+                source["text"] = str(document.get("text", document.get("content", "")))[:3000]
+                policy_sources.append(source)
+                source_summaries.append({
+                    key: value for key, value in source.items() if key != "text"
+                })
+            summarized_result: Any = {
+                "found": parsed.get("found", False),
+                "sources": source_summaries,
+                "message": parsed.get("message"),
+            }
+        else:
+            summarized_result = content[:3000]
+
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if isinstance(tool_call_id, str) and tool_call_id in calls_by_id:
+            calls_by_id[tool_call_id]["result"] = summarized_result
+        tool_outputs.append({
+            "tool": name,
+            "result": summarized_result,
+        })
+
+    return {
+        "tools_called": tools,
+        "tool_outputs": tool_outputs,
+        "policy_sources": policy_sources,
+        "tool_calls": tool_calls,
+    }
 
 
 @app.get("/health")
@@ -590,7 +676,7 @@ def review_admin_approval(
                         result = %s::jsonb
                     WHERE id = %s AND status = 'processing'
                     """,
-                    (json.dumps({"detail": exc.detail}, ensure_ascii=False), approval_id),
+                    (json.dumps({"detail": exc.detail}, ensure_ascii=False), str(approval_id)),
                 )
         raise
 

@@ -10,7 +10,7 @@ import {
 type RouteContext = { params: Promise<{ path: string[] }> };
 
 const ALLOWED_PATH =
-  /^(?:health|api\/(?:chat|transcribe|tts|admin\/approvals(?:\/[0-9a-f-]+(?:\/decision)?)?))$/i;
+  /^(?:health|api\/(?:chat|transcribe|tts|dev\/redis-cache-test|admin\/approvals(?:\/[0-9a-f-]+(?:\/decision)?)?))$/i;
 
 async function proxyAdvisorRequest(
   request: NextRequest,

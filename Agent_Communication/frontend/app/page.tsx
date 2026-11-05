@@ -506,6 +506,7 @@ export default function Home() {
   async function advanceSimulation(
     current: CallSnapshot,
     advisorText: string,
+    pendingMessages: Message[] = [],
     auditTrace?: AdvisorAuditTrace,
   ): Promise<CallSnapshot> {
     if (auditTrace) {

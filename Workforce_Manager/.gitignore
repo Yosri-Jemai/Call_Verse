@@ -1,0 +1,5 @@
+reports/
+# the dataset is shared; the review database (real approvals), the per-day cache and live calls are not
+data/*
+!data/call_log.csv
+!data/days.csv

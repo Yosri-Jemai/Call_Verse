@@ -1,0 +1,14 @@
+day_id,day_type,seed,split,calls,hung_up,incidents
+normal-20000,normal,20000,train,795,1,panne_application@595min; alerte_fraude@628min; campagne_flash@718min; campagne_flash@771min; campagne_flash@900min; panne_distributeur@1093min
+normal-20001,normal,20001,train,663,0,panne_distributeur@557min; alerte_fraude@688min; alerte_fraude@1066min
+normal-20002,normal,20002,test,746,0,campagne_flash@555min; alerte_fraude@637min; panne_application@740min; panne_application@844min; panne_application@1110min
+fin_de_mois-20100,fin_de_mois,20100,train,1559,12,alerte_fraude@960min; alerte_fraude@975min; campagne_flash@1099min
+fin_de_mois-20101,fin_de_mois,20101,train,2434,800,campagne_flash@595min; alerte_fraude@602min; panne_application@608min; panne_application@705min; campagne_flash@898min; campagne_flash@1090min
+fin_de_mois-20102,fin_de_mois,20102,test,1667,39,panne_distributeur@570min; campagne_flash@830min; campagne_flash@1050min
+panne-20200,panne,20200,train,3390,1098,campagne_flash@513min; campagne_flash@540min; panne_distributeur@548min; panne_distributeur@701min; alerte_fraude@733min; alerte_fraude@757min; campagne_flash@782min; campagne_flash@858min; alerte_fraude@867min; campagne_flash@885min; campagne_flash@942min; panne_application@972min
+campagne-20300,campagne,20300,train,1152,0,alerte_fraude@763min
+campagne-20301,campagne,20301,train,1190,0,panne_distributeur@805min
+campagne-20302,campagne,20302,test,1465,28,campagne_flash@505min; alerte_fraude@524min; campagne_flash@691min; campagne_flash@734min; panne_distributeur@947min
+vague_de_fraude-20400,vague_de_fraude,20400,train,1822,366,panne_application@649min; campagne_flash@671min; alerte_fraude@800min; panne_distributeur@896min; campagne_flash@902min; panne_distributeur@935min; panne_distributeur@1007min; alerte_fraude@1110min; panne_application@1133min; panne_application@1138min
+vague_de_fraude-20401,vague_de_fraude,20401,train,1470,117,campagne_flash@539min; alerte_fraude@613min; campagne_flash@850min; panne_distributeur@856min
+vague_de_fraude-20402,vague_de_fraude,20402,test,1870,375,panne_application@684min; panne_distributeur@741min; panne_distributeur@744min; panne_distributeur@870min; panne_distributeur@940min; campagne_flash@951min; panne_application@964min

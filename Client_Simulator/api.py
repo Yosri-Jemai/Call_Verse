@@ -36,6 +36,7 @@ QUALITY_ANALYST_DIR = Path(__file__).resolve().parents[1] / "Quality_Analyst"
 if str(QUALITY_ANALYST_DIR) not in sys.path:
     sys.path.insert(0, str(QUALITY_ANALYST_DIR))
 from analyst import QualityAnalystError, analyze_case, case_from_simulation
+from metrics import build_dashboard
 from storage import (
     QualityStorageError,
     get_report,
@@ -413,6 +414,40 @@ def analyze_completed_call(call_id: str, body: QualityAnalysisRequest):
     if not body.rules_only:
         QUALITY_REPORTS[call_id] = report
     return report
+
+
+def _pending_quality_calls() -> list[str]:
+    """Finished calls held by this server that have no complete quality report yet."""
+    return [cid for cid, (_, st) in CALLS.items() if st.status != "active" and cid not in QUALITY_REPORTS]
+
+
+@app.get("/api/quality/pending")
+def quality_pending():
+    """Finished simulations that were never reviewed (shown on the dashboard)."""
+    pending = _pending_quality_calls()
+    return {"count": len(pending), "call_ids": pending[:50]}
+
+
+@app.post("/api/quality/backfill")
+def quality_backfill(limit: int = Query(default=20, ge=1, le=50)):
+    """Run the quality analysis on finished simulations that have no report yet."""
+    done, failed = [], []
+    for call_id in _pending_quality_calls()[:limit]:
+        try:
+            analyze_completed_call(call_id, QualityAnalysisRequest())
+            done.append(call_id)
+        except HTTPException as exc:
+            failed.append({"call_id": call_id, "error": str(exc.detail)})
+    return {"analyzed": len(done), "failed": failed, "remaining": len(_pending_quality_calls())}
+
+
+@app.get("/api/quality/dashboard")
+def quality_dashboard(days: int | None = Query(default=None, ge=1, le=365)):
+    """Aggregated KPIs and chart data for the /quality/dashboard page."""
+    try:
+        return build_dashboard(quality_database(), days=days)
+    except (QualityStorageError, ValueError) as exc:
+        raise HTTPException(500, f"Quality dashboard could not be built: {exc}") from exc
 
 
 @app.get("/api/quality/reports")

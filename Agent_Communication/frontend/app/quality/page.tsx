@@ -134,9 +134,14 @@ export default function QualityPage() {
             <p className="text-[17px] font-semibold tracking-[-.04em]">Quality Analyst</p>
             <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Call review & advisor coaching</p>
           </div>
-          <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
-            Back to Relay
-          </a>
+          <nav className="flex gap-2">
+            <a href="/quality/dashboard" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+              Dashboard
+            </a>
+            <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[11px] font-semibold text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">
+              Back to Relay
+            </a>
+          </nav>
         </div>
       </header>
 

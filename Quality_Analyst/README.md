@@ -176,3 +176,17 @@ PostgreSQL).
 ```powershell
 .\Client_Simulator\.venv\Scripts\python.exe -m pytest .\Quality_Analyst\tests -q
 ```
+
+## Tableau de bord (`/quality/dashboard`)
+
+- `metrics.py` agrège la **dernière évaluation de chaque appel** (SQLite ou
+  PostgreSQL) : KPIs, tendance par jour, moyenne par critère, erreurs par type et
+  gravité, taux de réussite des contrôles par règles, découpage par motif / profil /
+  langue, recommandations récurrentes et appels à revoir en priorité.
+- API : `GET /api/quality/dashboard?days=30` (Client Simulator, port 8001).
+- Page Next.js : `Agent_Communication/frontend/app/quality/dashboard/page.tsx`
+  (graphiques en SVG, aucune dépendance ajoutée).
+- Données de démonstration : `python seed_demo.py data/demo.sqlite3 120`, puis
+  `QA_DATABASE_URL` absent et chemin SQLite pointé vers ce fichier, ou lancer sans
+  argument pour alimenter la base locale par défaut.
+- Seuils : réussite ≥ 7/10, à risque < 5/10 (`PASS_THRESHOLD`, `FAIL_THRESHOLD`).

@@ -264,35 +264,35 @@ def build_dashboard(database: str | Path, days: int | None = None) -> dict[str, 
         weakest = max(usable, key=lambda c: c["points_lost"])
         insights.append({
             "level": "action",
-            "text": f"Critère à travailler en priorité : {weakest['name']} "
-                    f"({weakest['avg_score']}/10, {weakest['points_lost']} pts perdus sur le score global).",
+            "text": f"Top criterion to coach: {weakest['name']} "
+                    f"({weakest['avg_score']}/10, {weakest['points_lost']} points lost on the overall score).",
         })
     if errors_by_type:
         top = errors_by_type[0]
         insights.append({
             "level": "action",
-            "text": f"Erreur la plus fréquente : {top['type']} ({top['count']} occurrences sur {top['calls_affected']} appels).",
+            "text": f"Most frequent error: {top['type']} ({top['count']} occurrences across {top['calls_affected']} calls).",
         })
     if critical_calls:
         insights.append({
             "level": "alert",
-            "text": f"{len(critical_calls)} appel(s) avec une erreur critique ({_rate(len(critical_calls), total)} %) — note plafonnée à 5/10.",
+            "text": f"{len(critical_calls)} call(s) with a critical error ({_rate(len(critical_calls), total)}%) — score capped at 5/10.",
         })
     weak_intents = [b for b in _breakdown(items, "intent") if b["avg_score"] is not None and b["calls"] >= 3]
     if weak_intents:
         insights.append({
             "level": "info",
-            "text": f"Motif le plus faible : {weak_intents[0]['name']} ({weak_intents[0]['avg_score']}/10 sur {weak_intents[0]['calls']} appels).",
+            "text": f"Weakest call reason: {weak_intents[0]['name']} ({weak_intents[0]['avg_score']}/10 over {weak_intents[0]['calls']} calls).",
         })
     if partial:
         insights.append({
             "level": "info",
-            "text": f"{len(partial)} évaluation(s) partielles (règles seules, sans note) — à relancer avec le LLM.",
+            "text": f"{len(partial)} partial evaluation(s) (rules only, no score) — re-run with the LLM judge.",
         })
     if delta is not None:
         insights.append({
             "level": "info" if delta >= 0 else "alert",
-            "text": f"Tendance : {'+' if delta >= 0 else ''}{delta} pt entre la première et la seconde moitié de la période.",
+            "text": f"Trend: {'+' if delta >= 0 else ''}{delta} pt between the first and second half of the period.",
         })
 
     return {

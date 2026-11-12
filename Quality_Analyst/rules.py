@@ -167,7 +167,7 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
     if not advisor_turns:
         warnings.append({
             "type": "indicateurs_simulateur_absents",
-            "description": "Aucun indicateur par tour du Client Simulator n'est disponible.",
+            "description": "No per-turn indicators from the Client Simulator are available.",
         })
 
     for entry in advisor_turns:
@@ -178,18 +178,18 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
                 "procedure_non_suivie",
                 "critique",
                 turn,
-                "Le Client Simulator a signalé une demande de code secret ou de donnée d'authentification.",
+                "The Client Simulator flagged a request for a secret code or authentication data.",
             ))
-            add_check("no_secret_request", "Ne pas demander de secret d'authentification", False, turn)
+            add_check("no_secret_request", "Never ask for authentication secrets (PIN, SMS code)", False, turn)
         elif sensitive is None:
             warnings.append({
                 "type": "texte_conseiller_absent",
                 "tour": turn,
-                "description": "Une mention sensible a été signalée, mais le texte ne permet pas de vérifier s'il s'agissait d'une demande ou d'un avertissement.",
+                "description": "A sensitive mention was flagged, but the text does not show whether it was a request or a warning.",
             })
-            add_check("no_secret_request", "Ne pas demander de secret d'authentification", None, turn)
+            add_check("no_secret_request", "Never ask for authentication secrets (PIN, SMS code)", None, turn)
         else:
-            add_check("no_secret_request", "Ne pas demander de secret d'authentification", True, turn)
+            add_check("no_secret_request", "Never ask for authentication secrets (PIN, SMS code)", True, turn)
 
         flags = entry.get("flags", {})
         if flags.get("remboursement_garanti"):
@@ -197,9 +197,23 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
                 "procedure_non_suivie",
                 "majeure",
                 turn,
-                "Le Client Simulator a détecté une promesse de remboursement garanti.",
+                "The Client Simulator detected a promise of a guaranteed refund.",
             ))
-            add_check("no_guaranteed_refund", "Ne pas garantir un remboursement", False, turn)
+            add_check("no_guaranteed_refund", "Never promise a guaranteed refund", False, turn)
+
+        level = int(flags.get("grossier_niveau") or (1 if flags.get("grossier") else 0))
+        if flags.get("grossier") or level:
+            masked = ", ".join(flags.get("grossier_mots") or [])
+            errors.append(_error(
+                "ton_inapproprie",
+                "critique" if level >= 2 else "mineure",
+                turn,
+                "The advisor used " + ("vulgar or insulting" if level >= 2 else "unprofessional")
+                + " language" + (f" ({masked})" if masked else "") + ".",
+            ))
+            add_check("professional_language", "Use professional language", False, turn)
+        elif "grossier" in flags:
+            add_check("professional_language", "Use professional language", True, turn)
 
     identity_tools = {
         item.strip()
@@ -209,7 +223,7 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
     if not identity_tools:
         warnings.append({
             "type": "regle_identite_non_configuree",
-            "description": "La règle d'identité est désactivée : renseignez QA_IDENTITY_REQUIRED_TOOLS avec les noms exacts des outils sensibles à contrôler.",
+            "description": "The identity rule is disabled: set QA_IDENTITY_REQUIRED_TOOLS to the exact names of the sensitive tools to control.",
         })
     else:
         advisor_entries = {int(entry["turn"]): entry for entry in advisor_turns}
@@ -226,19 +240,19 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
             state = advisor_entries.get(turn, {})
             verified = state.get("identity_verified_before")
             passed = verified is True
-            add_check("identity_before_sensitive_tool", "Vérifier l'identité avant l'accès sensible", passed, turn)
+            add_check("identity_before_sensitive_tool", "Verify identity before accessing account data", passed, turn)
             if not passed:
                 errors.append(_error(
                     "identite_non_verifiee",
                     "critique",
                     turn,
-                    f"Outil(s) configuré(s) comme sensible(s) appelé(s) sans vérification d'identité confirmée : {', '.join(sensitive_invoked)}.",
+                    f"Tool(s) configured as sensitive were called without confirmed identity verification: {', '.join(sensitive_invoked)}.",
                 ))
         if not any(
             set(trace.get("tools_called", [])) & identity_tools
             for trace in context.get("advisor_trace", [])
         ):
-            add_check("identity_before_sensitive_tool", "Vérifier l'identité avant l'accès sensible", True)
+            add_check("identity_before_sensitive_tool", "Verify identity before accessing account data", True)
 
     advisor_messages = [
         turn for turn in case["transcript"]
@@ -258,9 +272,9 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
                     "reponse_sans_source",
                     "majeure",
                     turn["turn"],
-                    "La réponse contient une valeur chiffrée vérifiable, mais aucune source ni aucun résultat d'outil n'est attaché à ce tour.",
+                    "The answer contains a verifiable figure, but no source or tool result is attached to this turn.",
                 ))
-                add_check("numeric_claim_has_evidence", "Étayer les chiffres par une source ou un résultat d'outil", False, turn["turn"])
+                add_check("numeric_claim_has_evidence", "Back figures with a source or tool result", False, turn["turn"])
                 continue
             evidence_numbers = set(_number_claims(evidence))
             unsupported = [
@@ -273,16 +287,16 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
                     "information_erronee",
                     "majeure",
                     turn["turn"],
-                    f"Valeur(s) annoncée(s) non retrouvée(s) dans les éléments de preuve de ce tour : {', '.join(unsupported)}.",
+                    f"Quoted value(s) not found in this turn's evidence: {', '.join(unsupported)}.",
                 ))
-                add_check("numeric_claim_matches_evidence", "Comparer les chiffres annoncés aux preuves", False, turn["turn"])
+                add_check("numeric_claim_matches_evidence", "Quoted figures match the evidence", False, turn["turn"])
             else:
-                add_check("numeric_claim_matches_evidence", "Comparer les chiffres annoncés aux preuves", True, turn["turn"])
+                add_check("numeric_claim_matches_evidence", "Quoted figures match the evidence", True, turn["turn"])
 
     if advisor_messages and not has_any_evidence:
         warnings.append({
             "type": "preuves_outils_absentes",
-            "description": "Aucun extrait RAG ou résultat d'outil n'est disponible ; les faits bancaires ne peuvent pas être comparés automatiquement.",
+            "description": "No RAG excerpt or tool result is available; banking facts cannot be compared automatically.",
         })
 
     if context.get("is_fraudster") and context.get("resolved"):
@@ -290,7 +304,7 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
             "procedure_non_suivie",
             "critique",
             None,
-            "Le Client Simulator indique qu'une tentative de fraude a abouti à une résolution.",
+            "The Client Simulator indicates that a fraud attempt ended in a resolution.",
         ))
 
     evaluated = [item["passed"] for item in checks if item["passed"] is not None]
@@ -301,7 +315,7 @@ def evaluate_rules(case: dict[str, Any]) -> dict[str, Any]:
         "errors": errors,
         "warnings": warnings,
         "evidence_scope": (
-            "Les vérifications factuelles portent uniquement sur les nombres avec unité explicite et les "
-            "résultats/sources rattachés au même tour. Elles ne prouvent pas la correction de tous les faits."
+            "Fact checks only cover numbers with an explicit unit and the "
+            "results/sources attached to the same turn. They do not prove that every fact is correct."
         ),
     }

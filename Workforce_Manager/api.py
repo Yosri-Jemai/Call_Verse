@@ -46,7 +46,7 @@ from .reviews import DEFAULT_DB, PENDING, ReviewStore  # noqa: E402
 from .dataset import is_dataset_seed  # noqa: E402
 from .model import cached_model  # noqa: E402
 from .staffing import team_check  # noqa: E402
-from .team import JUNIOR, SENIOR  # noqa: E402
+from .team import JUNIOR, SENIOR, effective_team  # noqa: E402
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 RUNS_DIR = DATA_DIR / "runs"
@@ -137,7 +137,7 @@ class DayBody(BaseModel):
     seed: int = 7
     start_hour: float = Field(8.0, ge=0, le=23)
     difficulty: float = Field(0.0, ge=0, le=1)
-    seniors: int = Field(4, ge=1, le=30)            # roster available to the Workforce Manager
+    seniors: int = Field(4, ge=0, le=30)            # roster available (0 + 0: the WFM answers alone)
     juniors: int = Field(8, ge=0, le=60)
     routing: Literal["skills", "priority", "fifo"] = "skills"
     overflow_s: float = Field(120, ge=0, le=3600)    # 0 = never send a security call to a junior
@@ -578,7 +578,7 @@ class ControlBody(BaseModel):
     scenario: str = "fin_de_mois"
     start_hour: float = Field(9, ge=8, le=18)
     duration_min: float = Field(120, ge=30, le=480)
-    seniors: int = Field(4, ge=1, le=20)
+    seniors: int = Field(4, ge=0, le=20)            # 0 + 0: the Workforce Manager answers the calls itself
     juniors: int = Field(6, ge=0, le=30)
     sla_s: float = Field(60, ge=10, le=600)          # service goal: answer ...
     sla_target: float = Field(0.8, ge=0.5, le=0.99)  # ... this share of the callers within sla_s seconds
@@ -612,6 +612,14 @@ def gate_evaluation(results: list[dict]) -> dict:
                 recall_pct=round(100 * held_thieves / (held_thieves + through), 1) if held_thieves + through else None)
 
 
+def team_verdict(check: dict, seniors: int, juniors: int) -> dict:
+    """Adds `verdict` (small | right | big) and `solo` (nobody on the team: the Workforce Manager answers)."""
+    spare = seniors + juniors - check["need_total"]
+    verdict = "small" if not check["ok"] else "big" if spare >= max(2, check["need_total"] // 2) else "right"
+    return {**check, "have_seniors": seniors, "have_juniors": juniors, "solo": seniors + juniors == 0,
+            "spare": max(0, spare), "verdict": verdict}
+
+
 @app.post("/api/control-room")
 def control_room(body: ControlBody):
     _check_scenario(body.scenario)
@@ -643,8 +651,9 @@ def control_room(body: ControlBody):
     while len(CONTROL_ROOMS) > 5:
         CONTROL_ROOMS.pop(next(iter(CONTROL_ROOMS)))
     k = compute_kpis(sim, store)
-    check = team_check(sim.plan, body.seniors, body.juniors, aht_senior_s=cfg.aht_senior_s,
-                       aht_junior_s=cfg.aht_junior_s, max_occupancy=cfg.max_occupancy)
+    check = team_verdict(team_check(sim.plan, *effective_team(body.seniors, body.juniors),
+                                    aht_senior_s=cfg.aht_senior_s, aht_junior_s=cfg.aht_junior_s,
+                                    max_occupancy=cfg.max_occupancy), body.seniors, body.juniors)
     called_back = [r for r in sim.results if r.get("callback_after_s") is not None]
     answered = [r for r in sim.results if not r["abandoned"] and r["status"] != "callback_tomorrow"
                 and r.get("callback_after_s") is None]

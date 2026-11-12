@@ -152,6 +152,11 @@ def test_security_call_overflows_to_junior_only_after_waiting():
     assert SkillsRouter(overflow_s=None).choose(team, q, now=10_000) is None
 
 
+def test_empty_roster_is_the_workforce_manager_alone():
+    team = build_roster(0, 0)
+    assert [(a.name, a.skill) for a in team] == [("WFM", SENIOR)]
+
+
 def test_security_intents_cover_every_fraud_intent():
     from client_simulator import FRAUD_INTENTS
     assert set(FRAUD_INTENTS) <= SECURITY_INTENTS

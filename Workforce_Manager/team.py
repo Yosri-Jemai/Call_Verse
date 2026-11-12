@@ -58,10 +58,21 @@ class Advisor:
         return total
 
 
+MANAGER_NAME = "WFM"   # the Workforce Manager itself, answering calls when nobody else is on the team
+
+
+def effective_team(seniors: int, juniors: int) -> tuple[int, int]:
+    """With an empty team the Workforce Manager takes the calls itself, as one careful (senior) desk."""
+    return (1, 0) if seniors + juniors == 0 else (seniors, juniors)
+
+
 def build_roster(seniors: int, juniors: int, *, senior_fn: Callable = baseline_advisor,
                  junior_fn: Callable = naive_advisor, senior_cost: float = 15.0,
                  junior_cost: float = 10.0) -> list[Advisor]:
-    """Named advisors S1..Sn (senior) and J1..Jm (junior). Costs are per hour (synthetic dinars)."""
+    """Named advisors S1..Sn (senior) and J1..Jm (junior). Costs are per hour (synthetic dinars).
+    0 + 0: the roster is the Workforce Manager alone (desk "WFM", careful like a senior)."""
+    if seniors + juniors == 0:
+        return [Advisor(MANAGER_NAME, SENIOR, senior_fn, senior_cost)]
     team = [Advisor(f"S{i + 1}", SENIOR, senior_fn, senior_cost) for i in range(seniors)]
     team += [Advisor(f"J{i + 1}", JUNIOR, junior_fn, junior_cost) for i in range(juniors)]
     return team

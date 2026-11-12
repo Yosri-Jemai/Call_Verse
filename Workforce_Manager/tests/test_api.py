@@ -198,6 +198,23 @@ def test_too_small_team_is_flagged_and_callbacks_limit_the_damage(client):
     assert big["team_check"]["ok"] and big["summary"]["hung_up"] < s["hung_up"]
 
 
+def test_empty_team_lets_the_workforce_manager_answer_alone(client):
+    d = client.post("/api/control-room", json={"scenario": "fin_de_mois", "duration_min": 60, "seed": 3,
+                                               "seniors": 0, "juniors": 0}).json()
+    c = d["team_check"]
+    assert [a["name"] for a in d["advisors"]] == ["WFM"]
+    assert c["solo"] and c["verdict"] == "small" and c["have_seniors"] == c["have_juniors"] == 0
+    assert d["summary"]["answered"] > 0
+    assert all(e["advisor"] == "WFM" for e in d["events"] if e["kind"] == "assign")
+
+
+def test_team_verdict_says_too_big_when_many_stay_home(client):
+    d = client.post("/api/control-room", json={"scenario": "fin_de_mois", "duration_min": 60, "seed": 3,
+                                               "seniors": 20, "juniors": 30}).json()
+    c = d["team_check"]
+    assert c["verdict"] == "big" and not c["solo"] and c["spare"] >= 2
+
+
 def test_model_endpoint_reports_what_was_learned(client):
     m = client.get("/api/model").json()
     assert m["train_days"] == {"fin_de_mois": 2, "vague_de_fraude": 2}

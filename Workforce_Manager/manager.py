@@ -17,7 +17,7 @@ from .reviews import ReviewStore
 from .routing import make_router
 from .simulation import WorkforceSimulation
 from .staffing import ReactiveController, StaffingPlan, erlang_plan, fixed_plan
-from .team import build_roster
+from .team import build_roster, effective_team
 
 
 @dataclass
@@ -72,11 +72,13 @@ class WorkforceManager:
 
     def plan(self, forecast: Forecast, duration_min: Optional[float] = None) -> StaffingPlan:
         c = self.config
+        roster_s, roster_j = effective_team(c.roster_seniors, c.roster_juniors)
         if c.staffing == "fixed":
             duration_s = (duration_min * 60) if duration_min else forecast.intervals[-1].end_s
-            return fixed_plan(duration_s, min(c.fixed_seniors, c.roster_seniors),
-                              min(c.fixed_juniors, c.roster_juniors), forecast.interval_s)
-        return erlang_plan(forecast, c.roster_seniors, c.roster_juniors, aht_senior_s=c.aht_senior_s,
+            solo = c.roster_seniors + c.roster_juniors == 0
+            return fixed_plan(duration_s, 1 if solo else min(c.fixed_seniors, roster_s),
+                              min(c.fixed_juniors, roster_j), forecast.interval_s)
+        return erlang_plan(forecast, roster_s, roster_j, aht_senior_s=c.aht_senior_s,
                            aht_junior_s=c.aht_junior_s, sla_s=c.sla_s, sla_target=c.sla_target,
                            max_occupancy=c.max_occupancy)
 

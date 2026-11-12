@@ -212,7 +212,7 @@ export default function QualityPage() {
                     <p className="text-[10px] font-semibold uppercase tracking-[.15em] text-forest">Report #{report.database_id} · {report.llm_judgment.provider || "rules"}</p>
                     <h2 className="mt-2 text-xl font-semibold">{report.scenario || "Call review"}</h2>
                     <p className="mt-1 text-xs text-[#859087]">{displayDate(report.stored_at || report.created_at)} · Call {report.call_id}</p>
-                    <p className="mt-1 text-xs text-[#859087]">Grille {report.version_grille || "legacy"}{report.llm_judgment.model ? ` · Modèle: ${report.llm_judgment.model}` : ""}</p>
+                    <p className="mt-1 text-xs text-[#859087]">Rubric {report.version_grille || "legacy"}{report.llm_judgment.model ? ` · Model: ${report.llm_judgment.model}` : ""}</p>
                     {report.llm_judgment.status === "skipped" && (
                       <p className="mt-2 text-xs font-medium text-amber-700">
                         Partial review: deterministic checks only; qualitative scoring was not run.
@@ -268,7 +268,7 @@ export default function QualityPage() {
                           <span className="font-semibold uppercase">{finding.gravite} · {finding.type}</span>
                           {finding.tour !== null && <span> · Tour {finding.tour}</span>}
                           <p>{finding.description}</p>
-                          <p className="text-[10px]">Détection : {finding.origine}</p>
+                          <p className="text-[10px]">Detected by: {finding.origine}</p>
                         </li>
                       ))}
                       {(report.erreurs || report.rule_evaluation.errors || []).length === 0 && (report.rule_evaluation.findings || []).map((finding, index) => (

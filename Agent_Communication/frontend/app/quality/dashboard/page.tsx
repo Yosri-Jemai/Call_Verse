@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  CRITERIA_LABEL, ERROR_LABEL, INTENT_LABEL, PROFILE_LABEL, LANG_LABEL, RULE_LABEL, WARNING_LABEL,
+  pretty, translateInsight, translateRecommendation,
+} from "../../../lib/qualityLabels";
+
 const CLIENT_API = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://127.0.0.1:8001";
 
 type Breakdown = { name: string; calls: number; avg_score: number | null; errors_per_call: number; critical_rate: number | null };
@@ -45,15 +50,6 @@ const BAD = "#b42318";
 const GRID = "#e7ebe5";
 const MUTED = "#748078";
 
-const CRITERIA_LABEL: Record<string, string> = {
-  exactitude: "Accuracy", conformite: "Compliance", resolution: "Resolution", empathie: "Empathy", pertinence: "Relevance",
-};
-const ERROR_LABEL: Record<string, string> = {
-  identite_non_verifiee: "Identity not verified", information_erronee: "Wrong information", reponse_sans_source: "No source",
-  hallucination: "Hallucination", procedure_non_suivie: "Procedure not followed", ton_inapproprie: "Inappropriate tone",
-  escalade_manquee: "Missed escalation",
-};
-
 /* ───────────────────────── helpers ───────────────────────── */
 
 const fmt = (v: number | null | undefined, suffix = "", digits = 1) =>
@@ -64,7 +60,7 @@ const rateColor = (v: number | null, goodAbove = 80, warnAbove = 60) => (v === n
 const polar = (cx: number, cy: number, r: number, angle: number) => [cx + r * Math.cos(angle), cy + r * Math.sin(angle)] as const;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const verdict = (s: number | null, t: Dashboard["thresholds"]) =>
-  s === null ? "No score yet" : s >= t.pass ? "On target" : s >= t.at_risk ? "Needs attention" : "At risk";
+  s === null ? "No score yet" : s >= t.pass ? "Compliant" : s >= t.at_risk ? "Needs attention" : "Non-compliant";
 
 /* ───────────────────────── icons ───────────────────────── */
 
@@ -433,7 +429,7 @@ function ErrorStack({ rows }: { rows: Dashboard["errors_by_type"] }) {
       {rows.map((row) => (
         <li key={row.type}>
           <div className="mb-1 flex justify-between text-xs">
-            <span className="font-medium text-[#45584b]">{ERROR_LABEL[row.type] || row.type}</span>
+            <span className="font-medium text-[#45584b]">{pretty(ERROR_LABEL, row.type)}</span>
             <span className="tabular-nums text-[#748078]">{row.count} · {row.calls_affected} calls</span>
           </div>
           <div className="flex h-2.5 gap-[2px]" style={{ width: `${(row.count / max) * 100}%` }}>
@@ -448,8 +444,10 @@ function ErrorStack({ rows }: { rows: Dashboard["errors_by_type"] }) {
 }
 
 /** Ranked list of segments with an inline score bar, call volume and risk chips. */
-function BreakdownList({ rows, t }: { rows: Breakdown[]; t: Dashboard["thresholds"] }) {
+function BreakdownList({ rows, t, kind }: { rows: Breakdown[]; t: Dashboard["thresholds"]; kind: "intent" | "profile" | "language" | "model" }) {
   const maxCalls = Math.max(1, ...rows.map((r) => r.calls));
+  const labelFor = (n: string) =>
+    kind === "intent" ? pretty(INTENT_LABEL, n) : kind === "profile" ? pretty(PROFILE_LABEL, n) : kind === "language" ? pretty(LANG_LABEL, n) : n;
   return (
     <ul className="space-y-1">
       <li className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.6fr)_52px_52px] items-center gap-3 px-2 pb-1 text-[10px] font-semibold uppercase tracking-[.1em] text-[#89938d]">
@@ -460,7 +458,7 @@ function BreakdownList({ rows, t }: { rows: Breakdown[]; t: Dashboard["threshold
         return (
           <li key={r.name} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1.6fr)_52px_52px] items-center gap-3 rounded-xl px-2 py-2 text-xs transition hover:bg-[#f7f9f6]">
             <span className="min-w-0">
-              <span className="block truncate font-medium text-[#34473b]">{r.name}</span>
+              <span className="block truncate font-medium text-[#34473b]">{labelFor(r.name)}</span>
               <span className="mt-1 block h-1 rounded-full bg-[#eef2ed]" title={`${r.calls} call${r.calls === 1 ? "" : "s"}`}>
                 <span className="block h-1 rounded-full bg-[#b9c7bd]" style={{ width: `${(r.calls / maxCalls) * 100}%` }} />
               </span>
@@ -551,11 +549,11 @@ export default function QualityDashboardPage() {
   const t = data?.thresholds ?? { pass: 7, at_risk: 5 };
   const k = data?.kpis;
   const delta = k?.score_delta ?? null;
-  const dimensionLabel = { by_intent: "Reason", by_profile: "Customer profile", by_language: "Language", by_model: "Judge model" }[dimension];
+  const dimensionLabel = { by_intent: "Call reason", by_profile: "Customer profile", by_language: "Language", by_model: "QA judge model" }[dimension];
 
   const criteriaRows = useMemo(
     () => (data?.criteria ?? []).map((c) => ({
-      label: `${CRITERIA_LABEL[c.name] || c.name} · ${Math.round(c.weight * 100)}%`,
+      label: `${pretty(CRITERIA_LABEL, c.name)} · ${Math.round(c.weight * 100)}%`,
       value: c.avg_score,
       note: c.points_lost !== null ? `${fmt(c.below_threshold_rate, "%")} of calls under ${t.pass}` : undefined,
       color: scoreColor(c.avg_score, t),
@@ -568,7 +566,7 @@ export default function QualityDashboardPage() {
       .sort((a, b) => (b.points_lost ?? 0) - (a.points_lost ?? 0));
     const top = rows[0]?.points_lost ?? 1;
     return rows.map((c, i) => ({
-      label: CRITERIA_LABEL[c.name] || c.name,
+      label: pretty(CRITERIA_LABEL, c.name),
       value: c.points_lost as number,
       top,
       priority: i === 0,
@@ -580,9 +578,9 @@ export default function QualityDashboardPage() {
     if (!k || k.pass_rate === null || k.at_risk_rate === null) return [];
     const pass = k.pass_rate, risk = k.at_risk_rate, mid = Math.max(0, +(100 - pass - risk).toFixed(1));
     return [
-      { label: `Pass (≥ ${t.pass})`, value: pass, color: GOOD },
+      { label: `Compliant (≥ ${t.pass})`, value: pass, color: GOOD },
       { label: `Borderline (${t.at_risk}–${t.pass})`, value: mid, color: "#e0b45a" },
-      { label: `At risk (< ${t.at_risk})`, value: risk, color: BAD },
+      { label: `Non-compliant (< ${t.at_risk})`, value: risk, color: BAD },
     ];
   }, [k, t]);
 
@@ -611,12 +609,12 @@ export default function QualityDashboardPage() {
   const weakest = rankedCriteria[0];
   const strongest = rankedCriteria.length > 1 ? rankedCriteria[rankedCriteria.length - 1] : undefined;
   const optionalKpis: { label: string; value: string; hint: string; icon: IconName; tone?: string; ring?: { value: number | null; color: string }; has: boolean }[] = k ? [
-    { label: "Critical-error calls", value: fmt(k.critical_call_rate, "%"), hint: "Score capped at 5/10", icon: "alert", tone: BAD, ring: { value: k.critical_call_rate, color: BAD }, has: (k.critical_call_rate ?? 0) > 0 },
+    { label: "Critical-error calls", value: fmt(k.critical_call_rate, "%"), hint: "Score capped at 5/10 (critical error)", icon: "alert", tone: BAD, ring: { value: k.critical_call_rate, color: BAD }, has: (k.critical_call_rate ?? 0) > 0 },
     { label: "Errors per call", value: fmt(k.errors_per_call, "", 2), hint: `${fmt(k.rule_error_share, "%")} caught by deterministic rules`, icon: "bug", has: (k.errors_per_call ?? 0) > 0 },
     { label: "Resolution rate", value: fmt(k.resolution_rate, "%"), hint: "From simulator ground truth", icon: "target", tone: rateColor(k.resolution_rate), ring: { value: k.resolution_rate, color: rateColor(k.resolution_rate) }, has: (k.resolution_rate ?? 0) > 0 },
-    { label: "Escalation rate", value: fmt(k.escalation_rate, "%"), hint: "Calls handed to a human", icon: "escalate", ring: { value: k.escalation_rate, color: FOREST }, has: (k.escalation_rate ?? 0) > 0 },
-    { label: "Avg wait", value: seconds(k.avg_wait_s), hint: "Before the advisor answered", icon: "clock", has: (k.avg_wait_s ?? 0) > 0 },
-    { label: "Avg duration", value: seconds(k.avg_duration_s), hint: "Whole conversation", icon: "timer", has: (k.avg_duration_s ?? 0) > 0 },
+    { label: "Escalation rate", value: fmt(k.escalation_rate, "%"), hint: "Calls escalated to a human advisor", icon: "escalate", ring: { value: k.escalation_rate, color: FOREST }, has: (k.escalation_rate ?? 0) > 0 },
+    { label: "Avg wait", value: seconds(k.avg_wait_s), hint: "Customer wait before the advisor answered", icon: "clock", has: (k.avg_wait_s ?? 0) > 0 },
+    { label: "Avg duration", value: seconds(k.avg_duration_s), hint: "Full call duration", icon: "timer", has: (k.avg_duration_s ?? 0) > 0 },
   ] : [];
   const shownOptional = optionalKpis.filter((o) => o.has);
   const hiddenOptional = optionalKpis.filter((o) => !o.has);
@@ -635,13 +633,13 @@ export default function QualityDashboardPage() {
               </svg>
             </span>
             <div>
-              <p className="text-[17px] font-semibold leading-tight tracking-[-.04em]">Quality Analyst</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Performance dashboard</p>
+              <p className="text-[17px] font-semibold leading-tight tracking-[-.04em]">Quality Assurance</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#89938d]">Banking call center · QA dashboard</p>
             </div>
           </div>
           <nav className="flex gap-2 text-[11px] font-semibold">
             <a href="/quality" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Call reviews</a>
-            <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to Relay</a>
+            <a href="/" className="rounded-xl border border-[#e6ebe5] bg-white px-3 py-2 text-[#56645b] transition hover:border-[#cbd8cc] hover:text-forest">Back to Relay (call center)</a>
           </nav>
         </div>
       </header>
@@ -649,10 +647,10 @@ export default function QualityDashboardPage() {
       <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8 lg:py-9">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[.2em] text-forest">Advisor quality · {periodLabel}</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-.05em]">Quality dashboard</h1>
+            <p className="text-[11px] font-semibold uppercase tracking-[.2em] text-forest">Advisor quality assurance · {periodLabel}</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-[-.05em]">Call Quality & Compliance Dashboard</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#748078]">
-              Aggregated from the latest evaluation of each call. A call passes at {t.pass}/10 or more and is at risk below {t.at_risk}/10.
+              Aggregated from the latest QA evaluation of each customer call handled by the AI advisor. A call is compliant at {t.pass}/10 or more and non-compliant below {t.at_risk}/10.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -663,7 +661,7 @@ export default function QualityDashboardPage() {
               ))}
             </div>
             {generated && !Number.isNaN(generated.getTime()) && (
-              <p className="text-[10px] text-[#98a29c]">Updated {generated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} · UI v2f</p>
+              <p className="text-[10px] text-[#98a29c]">Updated {generated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} </p>
             )}
           </div>
         </div>
@@ -688,7 +686,7 @@ export default function QualityDashboardPage() {
 
         {data && k && k.total_reviews === 0 && (
           <div className="rounded-2xl border border-[#e5e9e3] bg-white p-8 text-center text-sm leading-6 text-[#748078]">
-            No evaluations in this period. Finish a simulation in Relay, or run <code className="rounded bg-[#f1f5f0] px-1.5 py-0.5">python seed_demo.py</code> in <code className="rounded bg-[#f1f5f0] px-1.5 py-0.5">Quality_Analyst/</code> to load demo data.
+            No evaluations in this period. Finish a call simulation in Relay, or run <code className="rounded bg-[#f1f5f0] px-1.5 py-0.5">python seed_demo.py</code> in <code className="rounded bg-[#f1f5f0] px-1.5 py-0.5">Quality_Analyst/</code> to load demo data.
           </div>
         )}
 
@@ -696,7 +694,7 @@ export default function QualityDashboardPage() {
           <div className={`space-y-5 transition-opacity ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
             {/* ── headline visuals ───────────────────────────── */}
             <div className="grid gap-5 lg:grid-cols-3">
-              <Card title="Overall quality" subtitle="Average global score out of 10">
+              <Card title="Overall service quality" subtitle="Average global score out of 10">
                 <ScoreGauge score={k.avg_score} t={t} />
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] font-semibold">
                   {delta !== null && (
@@ -708,32 +706,32 @@ export default function QualityDashboardPage() {
                 </div>
               </Card>
 
-              <Card title="Call outcomes" subtitle="Share of calls by result against the thresholds">
+              <Card title="Call compliance outcomes" subtitle="Share of calls by result against the thresholds">
                 {outcome.length === 0 ? <p className="text-sm text-[#89938d]">No scored calls yet.</p> : (
                   <div className="flex flex-col items-center gap-4">
-                    <Donut slices={outcome} center={fmt(k.pass_rate, "%")} centerLabel="pass rate" />
+                    <Donut slices={outcome} center={fmt(k.pass_rate, "%")} centerLabel="compliance" />
                     <Legend items={outcome.map((s) => ({ label: `${s.label} · `, color: s.color, value: `${fmt(s.value, "%")}` }))} />
                   </div>
                 )}
               </Card>
 
-              <Card title="Criteria profile" subtitle="Dashed ring = pass threshold. Closer to the edge is better.">
+              <Card title="Quality criteria profile" subtitle="Dashed ring = pass threshold. Closer to the edge is better.">
                 <CriteriaRadar criteria={data.criteria} pass={t.pass} t={t} />
               </Card>
             </div>
 
             {/* ── KPI strip ──────────────────────────────────── */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Kpi icon="calls" label="Reviews" value={String(k.total_reviews)} spark={trendCalls}
+              <Kpi icon="calls" label="QA reviews" value={String(k.total_reviews)} spark={trendCalls}
                 hint={k.partial_reviews ? `${k.partial_reviews} partial (rules only, no score)` : "All fully scored"} />
-              <Kpi icon="check" label="Calls passing" value={`${passedCalls} / ${scoredCalls}`} tone={rateColor(k.pass_rate)}
+              <Kpi icon="check" label="Compliant calls" value={`${passedCalls} / ${scoredCalls}`} tone={rateColor(k.pass_rate)}
                 ring={{ value: k.pass_rate, color: rateColor(k.pass_rate) }} hint={`Scoring ≥ ${t.pass}/10`} />
-              <Kpi icon="alert" label="Calls at risk" value={`${riskCalls} / ${scoredCalls}`} tone={riskCalls > 0 ? BAD : GOOD}
+              <Kpi icon="alert" label="Non-compliant calls" value={`${riskCalls} / ${scoredCalls}`} tone={riskCalls > 0 ? BAD : GOOD}
                 ring={{ value: k.at_risk_rate, color: riskCalls > 0 ? BAD : GOOD }} hint={`Scoring below ${t.at_risk}/10`} />
               {weakest && <Kpi icon="bug" label="Weakest criterion" value={fmt(weakest.avg_score, "/10", 1)} tone={scoreColor(weakest.avg_score, t)}
-                hint={`${CRITERIA_LABEL[weakest.name] || weakest.name} · first to coach`} />}
+                hint={`${pretty(CRITERIA_LABEL, weakest.name)} · first to coach`} />}
               {strongest && <Kpi icon="target" label="Strongest criterion" value={fmt(strongest.avg_score, "/10", 1)} tone={scoreColor(strongest.avg_score, t)}
-                hint={`${CRITERIA_LABEL[strongest.name] || strongest.name} · keep it up`} />}
+                hint={`${pretty(CRITERIA_LABEL, strongest.name)} · keep it up`} />}
               {delta !== null && <Kpi icon="escalate" label="Score change" value={`${delta >= 0 ? "+" : ""}${delta}`} tone={delta >= 0 ? GOOD : BAD}
                 hint="Second half vs first half of the period" />}
               {shownOptional.map((o) => (
@@ -749,7 +747,7 @@ export default function QualityDashboardPage() {
             )}
 
             {data.insights.length > 0 && (
-              <Card title="What to act on" subtitle="Generated automatically from the numbers below.">
+              <Card title="Priority actions" subtitle="Generated automatically from the numbers below.">
                 <ul className="grid gap-2 md:grid-cols-2">
                   {data.insights.map((insight, i) => (
                     <li key={i} className={`flex gap-3 rounded-xl border px-3 py-2.5 text-sm leading-5 ${
@@ -758,7 +756,7 @@ export default function QualityDashboardPage() {
                         insight.level === "alert" ? "bg-rose-600 text-white" : insight.level === "action" ? "bg-amber-500 text-white" : "bg-[#d6e2d8] text-[#34473b]"}`}>
                         {insight.level === "alert" ? "Alert" : insight.level === "action" ? "Action" : "Info"}
                       </span>
-                      <span>{insight.text}</span>
+                      <span>{translateInsight(insight.text)}</span>
                     </li>
                   ))}
                 </ul>
@@ -777,10 +775,10 @@ export default function QualityDashboardPage() {
             {/* ── quality drivers ────────────────────────────── */}
             <SectionLabel>What drives the score</SectionLabel>
             <div className={`grid gap-5 ${totalErrors > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
-              <Card title="Criteria" subtitle="Average score out of 10 · green tick = pass threshold">
+              <Card title="Score by criterion" subtitle="Average score out of 10 · green tick = pass threshold">
                 <HBars rows={criteriaRows} max={10} tick={t.pass} format={(v) => v.toFixed(2)} />
               </Card>
-              <Card title="Points lost" subtitle="Weighted points lost vs a perfect 10 — where coaching pays off most">
+              <Card title="Points lost by criterion" subtitle="Weighted points lost vs a perfect 10 — where coaching pays off most">
                 <ul className="space-y-3.5">
                   {pointsLostRows.map((r) => (
                     <li key={r.label}>
@@ -825,21 +823,21 @@ export default function QualityDashboardPage() {
             {/* ── segments & rules ───────────────────────────── */}
             <SectionLabel>Segments &amp; rules</SectionLabel>
             <div className="grid gap-5 lg:grid-cols-2">
-              <Card title="Where it goes wrong" subtitle="Sorted from weakest to strongest average score · green tick = pass threshold"
+              <Card title="Performance by segment" subtitle="Sorted from weakest to strongest average score · green tick = pass threshold"
                 action={
                   <div role="tablist" className="flex shrink-0 gap-1 rounded-xl bg-[#f3f6f2] p-1 text-[11px] font-semibold">
-                    {([["by_intent", "Reason"], ["by_profile", "Profile"], ["by_language", "Language"], ["by_model", "Judge"]] as const).map(([key, label]) => (
+                    {([["by_intent", "Call reason"], ["by_profile", "Profile"], ["by_language", "Language"], ["by_model", "Judge"]] as const).map(([key, label]) => (
                       <button key={key} type="button" role="tab" aria-selected={dimension === key} onClick={() => setDimension(key)}
                         className={`rounded-lg px-2.5 py-1 transition ${dimension === key ? "bg-white text-forest shadow-sm" : "text-[#748078] hover:text-forest"}`}>{label}</button>
                     ))}
                   </div>
                 }>
                 <p className="sr-only">{dimensionLabel}</p>
-                <BreakdownList rows={data[dimension] ?? []} t={t} />
+                <BreakdownList rows={data[dimension] ?? []} t={t} kind={dimension.replace("by_", "") as "intent" | "profile" | "language" | "model"} />
               </Card>
-              <Card title="Deterministic rule checks" subtitle="Pass rate of each reproducible check (lowest first)">
+              <Card title="Mandatory banking rule checks" subtitle="Pass rate of each reproducible check (lowest first)">
                 {data.rule_checks.length === 0 ? <p className="text-sm text-[#89938d]">No rule check was run.</p> : (
-                  <HBars rows={data.rule_checks.map((c) => ({ label: c.label, value: c.pass_rate, note: `${c.passed} passed · ${c.failed} failed`, color: rateColor(c.pass_rate, 95, 80) }))} max={100} format={(v) => `${v}%`} />
+                  <HBars rows={data.rule_checks.map((c) => ({ label: RULE_LABEL[c.id] ?? c.label, value: c.pass_rate, note: `${c.passed} passed · ${c.failed} failed`, color: rateColor(c.pass_rate, 95, 80) }))} max={100} format={(v) => `${v}%`} />
                 )}
               </Card>
             </div>
@@ -847,15 +845,15 @@ export default function QualityDashboardPage() {
             {/* ── actions ────────────────────────────────────── */}
             <SectionLabel>Next steps</SectionLabel>
             <div className="grid gap-5 lg:grid-cols-2">
-              <Card title="Recurring coaching advice" subtitle="Same recommendation across several calls = systemic fix for Cashy">
+              <Card title="Recurring coaching advice" subtitle="Same recommendation across several calls = systemic fix for the Cashy advisor">
                 <ol className="space-y-2.5 text-sm leading-5 text-[#45584b]">
                   {data.top_recommendations.map((r) => (
                     <li key={r.text} className="flex gap-3 rounded-xl px-1 py-1 transition hover:bg-[#f7f9f6]">
                       <span className="h-fit w-9 shrink-0 rounded-md bg-[#eff6f0] py-0.5 text-center text-xs font-bold tabular-nums text-forest">×{r.count}</span>
-                      <span>{r.text}</span>
+                      <span>{translateRecommendation(r.text)}</span>
                     </li>
                   ))}
-                  {data.top_recommendations.length === 0 && <li className="text-[#89938d]">No recommendation yet.</li>}
+                  {data.top_recommendations.length === 0 && <li className="text-[#89938d]">No coaching recommendation yet.</li>}
                 </ol>
               </Card>
               <Card title="Calls to review first" subtitle="Lowest scores — open them in Call reviews">
@@ -864,8 +862,8 @@ export default function QualityDashboardPage() {
                     <li key={c.report_id}>
                       <a href="/quality" className="flex items-center justify-between gap-3 rounded-xl border border-[#edf0eb] px-3 py-2 text-xs transition hover:border-[#cbd8cc] hover:bg-[#f8faf7]">
                         <span className="min-w-0">
-                          <span className="font-semibold text-[#34473b]">Report #{c.report_id}</span> · {c.intent} · {c.profile}
-                          {c.errors.length > 0 && <span className="mt-0.5 block truncate text-[10px] text-[#89938d]">{c.errors.map((e) => ERROR_LABEL[e] || e).join(" · ")}</span>}
+                          <span className="font-semibold text-[#34473b]">Report #{c.report_id}</span> · {pretty(INTENT_LABEL, c.intent)} · {pretty(PROFILE_LABEL, c.profile)}
+                          {c.errors.length > 0 && <span className="mt-0.5 block truncate text-[10px] text-[#89938d]">{c.errors.map((e) => pretty(ERROR_LABEL, e)).join(" · ")}</span>}
                         </span>
                         <ScoreChip score={c.score} t={t} />
                       </a>
@@ -876,18 +874,18 @@ export default function QualityDashboardPage() {
             </div>
 
             {(data.warnings.length > 0 || data.models.length > 0) && (
-              <Card title="Audit health" subtitle="How trustworthy the evaluations themselves are">
+              <Card title="QA audit reliability" subtitle="How trustworthy the evaluations themselves are">
                 <div className="grid gap-6 text-xs text-[#56645b] sm:grid-cols-2">
                   <div>
                     <p className="mb-2 font-semibold text-[#34473b]">Warnings raised</p>
                     {data.warnings.length === 0 ? <span className="rounded-md bg-[#e8f5ee] px-2 py-1 font-semibold text-[#1f7a4d]">None</span> : (
                       <div className="flex flex-wrap gap-2">
-                        {data.warnings.map((w) => <span key={w.type} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-900">{w.type} · <b>{w.count}</b></span>)}
+                        {data.warnings.map((w) => <span key={w.type} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-900">{pretty(WARNING_LABEL, w.type)} · <b>{w.count}</b></span>)}
                       </div>
                     )}
                   </div>
                   <div>
-                    <p className="mb-2 font-semibold text-[#34473b]">Judge model</p>
+                    <p className="mb-2 font-semibold text-[#34473b]">QA judge model</p>
                     <div className="flex flex-wrap gap-2">
                       {data.models.map((m) => <span key={m.name} className="rounded-lg border border-[#e5e9e3] bg-[#f7f9f6] px-2.5 py-1">{m.name} · <b>{m.count}</b></span>)}
                     </div>

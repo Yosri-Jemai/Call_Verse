@@ -152,6 +152,7 @@ adressés au client. Relie-les aux tours/erreurs et n'invente pas de procédures
 </transcription>
 {feedback}
 
+IMPORTANT: write every free-text value (explication, explanation, description, recommandations) in clear professional English, even if the call is in French or Arabic. Keep the JSON keys and the enum values (error types, gravite) exactly as specified.
 Réponds uniquement en JSON, sans markdown, avec cette structure exacte :
 {{
   "explication": "résumé d'audit en 2 à 3 phrases",
@@ -495,13 +496,13 @@ def _merge_errors(rule_errors: list[dict[str, Any]], llm_errors: list[dict[str, 
 
 def _rule_recommendations(errors: list[dict[str, Any]]) -> list[str]:
     advice = {
-        "identite_non_verifiee": "Configurer les outils qui exigent une vérification d'identité et imposer cette vérification avant leur appel.",
-        "information_erronee": "Faire répondre Cashy à partir de la valeur renvoyée par la source ou l'outil, et lui faire vérifier le montant et l'unité avant de répondre.",
-        "reponse_sans_source": "Faire rechercher une source ou un résultat d'outil avant que Cashy annonce un montant, un pourcentage ou un délai.",
-        "hallucination": "Demander à Cashy de distinguer explicitement les faits vérifiés des informations qu'il ne peut pas confirmer.",
-        "procedure_non_suivie": "Revoir les consignes Advisor pour appliquer la procédure observée et expliciter l'étape suivante.",
-        "ton_inapproprie": "Ajouter aux consignes Advisor une réponse empathique adaptée à l'émotion et au profil exprimés par le client.",
-        "escalade_manquee": "Préciser dans les consignes Advisor les conditions d'escalade et les informations à transmettre.",
+        "identite_non_verifiee": "Configure the tools that require identity verification and enforce it before they are called.",
+        "information_erronee": "Make Cashy answer from the value returned by the source or tool, and check the amount and unit before replying.",
+        "reponse_sans_source": "Make Cashy retrieve a source or tool result before quoting an amount, percentage or deadline.",
+        "hallucination": "Ask Cashy to clearly separate verified facts from information it cannot confirm.",
+        "procedure_non_suivie": "Review the Advisor instructions so the bank procedure is applied and the next step is made explicit.",
+        "ton_inapproprie": "Add an empathetic response to the Advisor instructions, adapted to the emotion and profile the customer expresses.",
+        "escalade_manquee": "Specify in the Advisor instructions when to escalate and what information to hand over.",
     }
     return list(dict.fromkeys(advice[error["type"]] for error in errors))
 

@@ -23,20 +23,20 @@ INTENTS = {
 PROFILES = {"calme": 0.8, "pressé": -0.2, "en colère": -0.9, "âgé": -0.4}
 LANGS = ["fr", "fr", "fr", "en", "ar"]
 ERRORS = [
-    ("information_erronee", "majeure", "Valeur annoncée non retrouvée dans les preuves."),
-    ("reponse_sans_source", "majeure", "Chiffre sans source ni résultat d'outil."),
-    ("identite_non_verifiee", "critique", "Outil sensible appelé sans vérification d'identité."),
-    ("procedure_non_suivie", "critique", "Demande d'un code secret au client."),
-    ("ton_inapproprie", "mineure", "Ton sec face à un client mécontent."),
-    ("escalade_manquee", "majeure", "Aucune escalade malgré la demande du client."),
-    ("hallucination", "majeure", "Fait bancaire non étayé."),
+    ("information_erronee", "majeure", "Quoted value not found in the evidence."),
+    ("reponse_sans_source", "majeure", "Figure given without a source or tool result."),
+    ("identite_non_verifiee", "critique", "Sensitive tool called without identity verification."),
+    ("procedure_non_suivie", "critique", "Secret code requested from the customer."),
+    ("ton_inapproprie", "mineure", "Curt tone with an unhappy customer."),
+    ("escalade_manquee", "majeure", "No escalation despite the customer's request."),
+    ("hallucination", "majeure", "Unsupported banking fact."),
 ]
 RECS = [
-    "Toujours vérifier l'identité avant d'appeler un outil de compte.",
-    "Citer la source de politique pour chaque plafond ou frais annoncé.",
-    "Reformuler l'émotion du client avant de proposer une solution.",
-    "Proposer l'escalade vers un humain après deux échecs de résolution.",
-    "Ne jamais demander de code secret, même pour « confirmer ».",
+    "Always verify the customer's identity before calling an account tool.",
+    "Cite the policy source for every limit or fee quoted.",
+    "Acknowledge the customer's emotion before proposing a solution.",
+    "Offer escalation to a human advisor after two failed resolution attempts.",
+    "Never ask for a secret code, even to “confirm”.",
 ]
 
 
@@ -57,7 +57,7 @@ def main() -> None:
             bias = {"empathie": -0.6 if profile == "en colère" else 0.3, "exactitude": -0.4}.get(name, 0)
             criteria[name] = {
                 "score": int(max(0, min(10, round(rng.gauss(base + bias, 1.4))))),
-                "explanation": "Démo.", "evidence_turns": [1],
+                "explanation": "Demo.", "evidence_turns": [1],
             }
         errors = []
         for _ in range(rng.choice([0, 0, 1, 1, 2, 3])):
@@ -69,24 +69,24 @@ def main() -> None:
             score = min(score, 5)
         call_id = f"demo-{n:04d}"
         checks = [
-            {"id": "no_secret_request", "label": "Ne pas demander de secret", "passed": not any(e["type"] == "procedure_non_suivie" for e in errors), "turns": []},
-            {"id": "identity_before_sensitive_tool", "label": "Vérifier l'identité avant l'accès sensible", "passed": not any(e["type"] == "identite_non_verifiee" for e in errors), "turns": []},
-            {"id": "numeric_claim_matches_evidence", "label": "Comparer les chiffres aux preuves", "passed": not any(e["type"] == "information_erronee" for e in errors), "turns": []},
+            {"id": "no_secret_request", "label": "Never ask for authentication secrets (PIN, SMS code)", "passed": not any(e["type"] == "procedure_non_suivie" for e in errors), "turns": []},
+            {"id": "identity_before_sensitive_tool", "label": "Verify identity before accessing account data", "passed": not any(e["type"] == "identite_non_verifiee" for e in errors), "turns": []},
+            {"id": "numeric_claim_matches_evidence", "label": "Quoted figures match the evidence", "passed": not any(e["type"] == "information_erronee" for e in errors), "turns": []},
         ]
         report = {
             "call_id": call_id, "conversation_id": call_id, "version_grille": GRID_VERSION,
             "scenario": intent, "criteres": criteria, "erreurs": errors, "errors": errors,
             "score_global": score, "overall_score_0_to_100": round(score * 10),
-            "explication": "Rapport de démonstration.",
+            "explication": "Demo report.",
             "recommendations": rng.sample(RECS, k=rng.randint(1, 3)),
-            "avertissements": [{"type": "preuves_outils_absentes", "description": "démo"}] if rng.random() < .2 else [],
+            "avertissements": [{"type": "preuves_outils_absentes", "description": "demo"}] if rng.random() < .2 else [],
             "rule_evaluation": {"checks": checks, "errors": [], "warnings": [], "recommendations": [], "evidence_scope": ""},
             "llm_judgment": {"status": "completed", "provider": "groq", "model": "openai/gpt-oss-120b"},
             "advisor_trace": [],
         }
         case = {
             "call_id": call_id,
-            "transcript": [{"turn": 0, "role": "client", "text": "Bonjour"}, {"turn": 1, "role": "conseiller", "text": "Bonjour"}],
+            "transcript": [{"turn": 0, "role": "client", "text": "Hello"}, {"turn": 1, "role": "conseiller", "text": "Hello"}],
             "context": {
                 "source": "demo", "scenario": intent, "intent": intent, "profile": profile,
                 "language": rng.choice(LANGS), "status": "closed",

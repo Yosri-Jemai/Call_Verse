@@ -31,7 +31,7 @@ CRITERIA_WEIGHTS = {
     "empathie": 0.15,
     "pertinence": 0.15,
 }
-PASS_THRESHOLD = 7.0      # a call "passes" at >= 7/10
+PASS_THRESHOLD = 9.0      # a call "passes" at >= 9/10
 FAIL_THRESHOLD = 5.0      # a call is "at risk" below 5/10
 SEVERITIES = ("critique", "majeure", "mineure")
 BUCKETS = ((0, 2), (2, 4), (4, 6), (6, 8), (8, 10.01))
